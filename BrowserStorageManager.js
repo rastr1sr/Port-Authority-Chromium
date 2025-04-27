@@ -1,4 +1,4 @@
-import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browserAction.js";
+import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browserActions.js";
 import { getPortForProtocol } from "./constants.js";
 
 const STORAGE_LOCK_KEY = "port_authority_storage_lock";
