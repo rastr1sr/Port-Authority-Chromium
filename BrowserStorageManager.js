@@ -1,4 +1,4 @@
-import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browseraction.js";
+import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browserAction.js";
 import { getPortForProtocol } from "./constants.js";
 
 const STORAGE_LOCK_KEY = "port_authority_storage_lock";
@@ -160,7 +160,7 @@ function createAllowlistRules(allowedDomains, existingRuleIds) {
                     initiatorDomains: [domain],
                     resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
                  }
-                 // --- Alternative Condition (if you want to allow *access to* local resources *from* allowlisted sites) ---
+                 // --- Alternative Condition (if we want to allow *access to* local resources *from* allowlisted sites) ---
                  // condition: {
                  //   initiatorDomains: [domain],
                  //   requestDomains: ["localhost", /* other private IPs/domains if needed */],
