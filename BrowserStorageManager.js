@@ -1,300 +1,402 @@
-// TODO remove these eventually, that they're needed is a sign of bad code encapsulation
-import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browserActions.js";
+import { updateBadges, notifyThreatMetrix, notifyPortScanning } from "./browseraction.js";
 import { getPortForProtocol } from "./constants.js";
 
-// Key required to access the same lock that's used to control write access to localStorage
 const STORAGE_LOCK_KEY = "port_authority_storage_lock";
+
+// Store dynamic rule IDs for allowlist
+const ALLOWLIST_RULE_ID_START = 10000;
+const ALLOWLIST_RULE_STORAGE_KEY = "allowlistRuleIds";
 
 /**
  * @private
- * @param {string} key - Used to reference stored value from `browser.storage.local`
- * @param {any} [default_value] - Will be returned if there is no value in storage under `key`
- * @returns {Promise<any>} Type is probably the same as `default_value` due to convention yet isn't checked or guaranteed at all
- * 
- * @remarks
- * Doesn't have any atomicity or transaction guarantees like the exported functions do.
- * Need to use a lock to prevent race conditions like:
- * 
- *      1. (trying to execute A++: read A=1 here)
- *      2. [A=5 written from other location]
- *      3. (write A++ based on old value, A=2, != 6 to reflect latest data) 
- * 
- * Also it's {@link https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage#:~:text=values%20stored%20can%20be%20any%20JSON%2Difiable%20value | likely} 
- * that `JSON.stringify` can be abandoned and was never needed in the first place, extension `storage` access supports types other than strings by default.
- * 
- * @see {@linkcode getItemFromLocal} For lock-safe storage reading version
- * @see {@linkcode modifyItemInLocal} If you need to change a value in addition to reading it (safely)
+ * Read from storage without locking. Use with caution.
  */
 async function UNLOCKED_getItemFromLocal(key, default_value) {
     let storage_value;
     try {
-        storage_value = await browser.storage.local.get(key);
+        storage_value = await chrome.storage.local.get(key);
 
-        // Objects not in storage return an empty object and don't need to be parsed as JSON
-        if(Object.keys(storage_value).length === 0) {
-            console.warn("No value found for [" + key + "], using provided default: ", {
-                [key]: default_value
-            });
+        if (storage_value && key in storage_value) {
+             // Check if the value is already an object/primitive or needs parsing
+             // MV3 storage often returns the actual object directly
+             try {
+                 // Attempt to parse only if it looks like a JSON string
+                 if (typeof storage_value[key] === 'string') {
+                    // Avoid parsing 'true', 'false', numbers etc if they were stored as strings originally
+                    // A simple heuristic: check for braces or brackets
+                     if (storage_value[key].startsWith('{') || storage_value[key].startsWith('[')) {
+                        return JSON.parse(storage_value[key]);
+                     }
+                 }
+                 return storage_value[key]; // Return directly if not a complex JSON string
+             } catch (parseError) {
+                 console.warn(`Failed to parse storage value for key [${key}], returning raw. Error:`, parseError, "Value:", storage_value[key]);
+                 return storage_value[key]; // Return raw value on parse error
+             }
+        } else {
+            // Key not found, return default
+             if (default_value !== undefined) {
+                console.warn("No value found for [" + key + "], using provided default: ", {
+                    [key]: default_value
+                });
+             }
             return default_value;
         }
-
-        // Everything going to plan
-        return JSON.parse(storage_value[key]);
     } catch (error) {
         console.error("Error getting storage value [" + key + "]: ", {
             error,
             default_value,
             storage_value
         });
-
-        // Still degrading gracefully by returning the default value
         return default_value;
     }
 }
 
-/**
- * @param {string} key - Used to reference stored value from `browser.storage.local`
- * @param {any} [default_value] - Will be returned if there is no value in storage under `key`
- * @returns {Promise<any>} Type is probably the same as `default_value` due to convention yet isn't checked or guaranteed at all
- * 
- * @remarks
- * Don't need `exclusive` lock for reading, just writing and modifying.
- * *Do* still need `shared` lock to prevent reading in the middle of a modify action.
- * 
- * @see {@linkcode modifyItemInLocal} If you need to change a value in addition to reading it
- * @see {@linkcode UNLOCKED_getItemFromLocal} For the lock-free function this wraps
- */
 export async function getItemFromLocal(key, default_value) {
+    // Locking mechanism remains the same
     return navigator.locks.request(STORAGE_LOCK_KEY,
-        { mode: "shared" }, // allows for simultaneous reads that are guaranteed to not occur in the middle of a `modifyItemInLocal` call
+        { mode: "shared" },
         async (lock) => {
             const value = await UNLOCKED_getItemFromLocal(key, default_value);
-            console.debug("Reading storage:", {[key]: value});
+            // console.debug("Reading storage:", {[key]: value}); // Reduce log noise
             return value;
         }
     );
 }
 
-/**
- * @template T
- * @param {string} key Used to reference stored value from `browser.storage.local`
- * @param {T} value Stored blindly, overwrites any previous value
- * @returns {Promise<T>} Resolves once operation is finished, returning the new stored value
- * 
- * @see {@linkcode modifyItemInLocal} If you need to read a value, mutate it, then save it (with transaction safety)
- * @see {@linkcode clearItemsInLocal} To clear and set all stored values at once
- */
 export async function setItemInLocal(key, value) {
-    if (!value && value !== false) console.warn("Storing empty value to key [" + key + "]: " + value);
+    // Don't stringify simple types unnecessarily, but complex objects should be
+    let valueToStore = value;
+    if (typeof value === 'object' && value !== null) {
+         try {
+            valueToStore = JSON.stringify(value);
+         } catch (e) {
+             console.error("Could not stringify value for key", key, value, e);
+             // Decide how to handle error: maybe store as is, maybe throw
+             valueToStore = value; // Store as is if stringify fails
+         }
+    } else if (value === undefined) {
+        console.warn("Storing undefined value to key [" + key + "]");
+        // Storing undefined might remove the key, depending on storage implementation.
+        // Explicitly remove or store null instead? For now, let it try.
+    }
 
-    const stringifiedValue = JSON.stringify(value);
 
-    // Acquire lock for write access before updating
     return navigator.locks.request(STORAGE_LOCK_KEY, async (lock) => {
-        await browser.storage.local.set({ [key]: stringifiedValue });
-        console.debug("Setting storage:", {[key]: value});
-        return value;
+        try {
+            await chrome.storage.local.set({ [key]: valueToStore });
+            // console.debug("Setting storage:", {[key]: value}); // Reduce log noise
+
+            // If updating the allowlist, update DNR rules
+            if (key === "allowed_domain_list") {
+                await updateAllowlistRules(value); // value here is the new list of domains
+            }
+        } catch (error) {
+            console.error("Error setting storage:", {[key]: valueToStore}, error);
+            // Re-throw or handle error appropriately
+            throw error; // Re-throw to indicate failure
+        }
+        return value; // Return the original value passed
     });
 }
 
-/**
- * @template T
- * @param {string} key Used to reference stored value from `browser.storage.local`
- * @param {T} default_value Will be passed as the original value to `mutate` if nothing is found in storage
- * @param {(original_value: T)=>(T | Promise<T>)} mutate Pass a function that takes the stored value and returns the new value to write. Function can be async.
- * @returns {Promise<T>} Resolves once operation is finished, returning the new stored value
- * 
- * @example
- * // Starting storage state: `{key_example: 1}`
- * modifyItemInLocal("key_example", 0, (v)=>v++) 
- * // Result storage state:  `{key_example: 2}`
- * 
- * @example
- * modifyItemInLocal("key", [],
- *     async (storageValue) => {   // storageValue: string[]
- *         // Storage access is locked until the function returns
- *         // no reads or writes can interrupt it
- * 
- *         storageValue.push("new item");
- *         storageValue.sort();
- * 
- *         return storageValue;    // returned value will be written to storage
- * });
- * 
- * @remarks
- * Need to use a lock to allow atomic and reliable modification of stored values.
- * Without locking, race conditions can occur.
- *
- *      1. (trying to execute A++: read A=1 here)
- *      2. [A=5 written from other location]
- *      3. (write A++ based on old value, A=2, != 6 to reflect latest data) 
- */
+
 export async function modifyItemInLocal(key, default_value, mutate) {
     return navigator.locks.request(STORAGE_LOCK_KEY, async (lock) => {
-        // Fetch the value to be modified, storing it in `initial_value`
         const initial_value = await UNLOCKED_getItemFromLocal(key, default_value);
+        const new_value_raw = await mutate(initial_value);
 
-        // Apply the mutation function (adding a list item, removing an element based on a filter, etc)
-        const new_value = await mutate(initial_value);
+        // Stringify if it's an object
+        let new_value_to_store = new_value_raw;
+         if (typeof new_value_raw === 'object' && new_value_raw !== null) {
+             try {
+                 new_value_to_store = JSON.stringify(new_value_raw);
+             } catch (e) {
+                console.error("Could not stringify modified value for key", key, new_value_raw, e);
+                new_value_to_store = new_value_raw; // Store as is if fails
+             }
+         }
 
-        // Re-stringify and save the changed value
-        await browser.storage.local.set({
-            [key]: JSON.stringify(new_value)
-        }); 
+        try {
+            await chrome.storage.local.set({ [key]: new_value_to_store });
+            // console.debug("Updating storage value: ", key, { // Reduce log noise
+            //     ["old " + key]: initial_value,
+            //     ["new " + key]: new_value_raw
+            // });
 
-        console.debug("Updating storage value: ", key, {
-            ["old " + key]: initial_value,
-            ["new " + key]: new_value
-        });
-        
-        // Return result of modification so can use later
-        return new_value;
+             // If updating the allowlist, update DNR rules
+             if (key === "allowed_domain_list") {
+                await updateAllowlistRules(new_value_raw); // pass the actual list
+             }
+
+        } catch (error) {
+            console.error("Error updating storage value:", {[key]: new_value_to_store}, error);
+            throw error;
+        }
+
+        return new_value_raw; // Return the value *after* mutation but *before* stringification
     });
 }
 
-/**
- * @param {{[key: string]: any}} [default_structure] Specify initial storage values to be written after clearing.
- * The object will be `JSON.stringify`'d transparently, so complex objects can be used.
- * @returns {Promise<{[key: string]: any}>} Resolves once operation is finished, returning the new stored values
- * 
- * @example
- * clearItemsInLocal({
- *     "allowed_domain_list": [],
- *     "blocking_enabled": true,
- *     "notifications_enabled": true
- * });
- * 
- * @remarks
- * Need to obtain the lock to guarantee a clean slate, otherwise
- * could be called in the middle of `modifyItemInLocal` running, clear the store,
- * then the interrupted `modifyItemInLocal` saves its work and overwrites the cleared values.
- */
+// --- DNR Allowlist Rule Management ---
+
+// Function to generate DNR rules for the allowlist
+function createAllowlistRules(allowedDomains, existingRuleIds) {
+    const rules = [];
+    allowedDomains.forEach((domain, index) => {
+        // Ensure domain is valid before creating a rule
+        if (typeof domain === 'string' && domain.trim().length > 0) {
+             // Reuse existing IDs or generate new ones
+             const ruleId = existingRuleIds[index] || (ALLOWLIST_RULE_ID_START + index);
+            rules.push({
+                id: ruleId,
+                priority: 2, // Higher priority than blocking rules
+                action: { type: "allow" },
+                condition: {
+                    // Allow requests *initiated by* these domains to go anywhere
+                    // This is slightly different from the original logic which checked destination
+                    // but more aligned with common allowlist use cases.
+                    // Adjust if the goal was to allow requests *to* private IPs *from* whitelisted domains.
+                    initiatorDomains: [domain],
+                    resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+                 }
+                 // --- Alternative Condition (if you want to allow *access to* local resources *from* allowlisted sites) ---
+                 // condition: {
+                 //   initiatorDomains: [domain],
+                 //   requestDomains: ["localhost", /* other private IPs/domains if needed */],
+                 //   urlFilter: "|http*://192.168.*", // Example for IPs
+                 //   resourceTypes: [...]
+                 // }
+                 // This alternative is more complex to manage. Stick with initiatorDomains unless specifically needed.
+            });
+        } else {
+            console.warn("Skipping invalid domain in allowlist:", domain);
+        }
+    });
+    return rules;
+}
+
+// Function to update dynamic DNR rules based on the allowlist
+async function updateAllowlistRules(allowedDomains) {
+    if (!Array.isArray(allowedDomains)) {
+        console.error("Cannot update allowlist rules, provided value is not an array:", allowedDomains);
+        return;
+    }
+    console.log("Updating DNR allowlist rules for domains:", allowedDomains);
+
+    try {
+        // Get existing dynamic rules to find IDs to remove
+        const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
+        const ruleIdsToRemove = existingRules
+            .filter(rule => rule.id >= ALLOWLIST_RULE_ID_START)
+            .map(rule => rule.id);
+
+        // Get stored rule IDs to attempt reuse (helps maintain stable IDs if list order changes slightly)
+        const storedRuleIds = await UNLOCKED_getItemFromLocal(ALLOWLIST_RULE_STORAGE_KEY, []);
+
+        // Create new rules
+        const newRules = createAllowlistRules(allowedDomains, storedRuleIds);
+        const newRuleIds = newRules.map(rule => rule.id);
+
+         // Store the new IDs
+         await UNLOCKED_setItemInLocal(ALLOWLIST_RULE_STORAGE_KEY, newRuleIds); // Use internal setter
+
+        // Update DNR
+        await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: ruleIdsToRemove,
+            addRules: newRules
+        });
+        console.log("Successfully updated DNR allowlist rules.");
+
+    } catch (error) {
+        console.error("Failed to update DNR allowlist rules:", error);
+         // Consider notifying the user or logging more details
+    }
+}
+
+// Internal function to set storage without triggering rule updates recursively
+async function UNLOCKED_setItemInLocal(key, value) {
+     let valueToStore = value;
+     if (typeof value === 'object' && value !== null) {
+          try { valueToStore = JSON.stringify(value); } catch (e) { console.error("stringify error", e); }
+     }
+     await chrome.storage.local.set({ [key]: valueToStore });
+     // console.debug("Internal set storage:", {[key]: value});
+}
+
+
+// --- Original Functions adapted ---
+
+
 export async function clearItemsInLocal(default_structure = {}) {
-    // Stringify each the value for each key instead of passing directly
-    // https://stackoverflow.com/a/14810722/3196151
-    // This might not be necessary, matching prior practices for now though
-    // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage#:~:text=values%20stored%20can%20be%20any%20JSON%2Difiable%20value
-    const default_structure_stringified =
-        Object.fromEntries(Object.entries(default_structure).map(
-            ([key, value]) =>
-                [key, JSON.stringify(value)]
-        ));
+    // Stringify only complex objects within the structure
+     const default_structure_processed = Object.fromEntries(
+        Object.entries(default_structure).map(([key, value]) => {
+            let valueToStore = value;
+            if (typeof value === 'object' && value !== null) {
+                 try { valueToStore = JSON.stringify(value); } catch(e) { console.error("Stringify error", e); }
+            }
+            return [key, valueToStore];
+        })
+    );
 
     console.debug("Clearing local storage with default values:", {
         passed: default_structure,
-        parsed: default_structure_stringified
+        processed: default_structure_processed
     })
 
-    // Acquire lock for write access before clearing
     return navigator.locks.request(STORAGE_LOCK_KEY, async (lock) => {
-        await browser.storage.local.clear();
-        await browser.storage.local.set(
-            default_structure_stringified
-        );
+        await chrome.storage.local.clear();
+        // Clear stored allowlist rule IDs as well
+        await UNLOCKED_setItemInLocal(ALLOWLIST_RULE_STORAGE_KEY, []);
 
-        // Return the values set
+        await chrome.storage.local.set(default_structure_processed);
+
+        // Re-apply DNR rules based on defaults
+        if (default_structure && "allowed_domain_list" in default_structure) {
+            await updateAllowlistRules(default_structure.allowed_domain_list);
+        } else {
+            await updateAllowlistRules([]); // Clear DNR rules if no default list
+        }
+        if (default_structure && "blocking_enabled" in default_structure) {
+             await toggleBlocking(default_structure.blocking_enabled); // Update DNR enabled state
+        } else {
+            await toggleBlocking(true); // Enable by default if not specified
+        }
+
+
         return default_structure;
     });
 }
 
-
-
+// Helper function to enable/disable the main static ruleset
+export async function toggleBlocking(enable) {
+     const rulesetId = "ruleset_1"; // Matches the ID in manifest.json
+     try {
+         if (enable) {
+             await chrome.declarativeNetRequest.updateEnabledRulesets({
+                 enableRulesetIds: [rulesetId]
+             });
+             console.log("DNR ruleset enabled:", rulesetId);
+         } else {
+             await chrome.declarativeNetRequest.updateEnabledRulesets({
+                 disableRulesetIds: [rulesetId]
+             });
+             console.log("DNR ruleset disabled:", rulesetId);
+         }
+     } catch (error) {
+         console.error(`Failed to ${enable ? 'enable' : 'disable'} DNR ruleset ${rulesetId}:`, error);
+     }
+}
 
 
 /**
- * Adds the host and port of the provided url to a list of hosts and ports that were blocked from port scanning.
- * 
- * @param {URL} url URL object built from the url of the tab associated with the tabID
- * @param {string} tabId Id the of the browser tab the port check was executed in
+ * Records the *attempted* port scan (called from non-blocking listener).
+ * The actual block is handled by DNR.
  */
 export async function addBlockedPortToHost(url, tabIdString) {
+    // This function now primarily serves logging/UI purposes
     const tabId = parseInt(tabIdString);
-    const host = url.host.split(":")[0]; // TODO replace with more robust method to get host, this might act funky around IPv6 addresses
-    const port = "" + (url.port || getPortForProtocol(url.protocol));
+    if (isNaN(tabId) || tabId < 0) return; // Ignore invalid tab IDs
 
-    // Grab the blocked ports object from extensions storage
-    return modifyItemInLocal("blocked_ports", {}, (blocked_ports) => {
-        // Grab the array of ports blocked for the host url
-        const tab_hosts = blocked_ports[tabId] || {};
-        let hosts_ports = tab_hosts[host];
-        if (Array.isArray(hosts_ports)) {
-            // Add the port to the array of blocked ports for this host IFF the port doesn't exist
-            if (hosts_ports.indexOf(port) === -1) {
-                hosts_ports = tab_hosts[host].concat([port]);
-                tab_hosts[host] = hosts_ports;
-                blocked_ports[tabId] = tab_hosts;
-            }
-        } else {
-            tab_hosts[host] = [port];
-            blocked_ports[tabId] = tab_hosts;
+    const host = url.hostname; // Use hostname for better IPv6 handling
+    const port = "" + (url.port || getPortForProtocol(url.protocol) || 'unknown'); // Handle missing port
+
+    return modifyItemInLocal("blocked_ports", {}, (blocked_ports_tabs) => {
+        const tab_hosts = blocked_ports_tabs[tabId] || {};
+        let hosts_ports = tab_hosts[host] || []; // Initialize as empty array
+
+        if (!Array.isArray(hosts_ports)) { // Ensure it's an array
+            console.warn(`Correcting non-array value for blocked_ports[${tabId}][${host}]`);
+            hosts_ports = [];
         }
-        return blocked_ports;
+
+        if (hosts_ports.indexOf(port) === -1) {
+            hosts_ports.push(port); // Use push for simplicity
+            tab_hosts[host] = hosts_ports;
+            blocked_ports_tabs[tabId] = tab_hosts;
+        }
+        return blocked_ports_tabs;
     });
 }
 
 /**
- * Adds the host and port of the provided url to a list of hosts and ports that were blocked from port scanning.
- * 
- * @param {URL} url URL object built from the url of the tab associated with the tabID
- * @param {string} tabId Id the of the browser tab the port check was executed in
+ * Records the *attempted* tracking script load (called from non-blocking listener).
+ * The actual block is handled by DNR.
  */
 export async function addBlockedTrackingHost(url, tabIdString) {
+     // This function now primarily serves logging/UI purposes
     const tabId = parseInt(tabIdString);
-    const host = url.host;
+     if (isNaN(tabId) || tabId < 0) return; // Ignore invalid tab IDs
+
+    const host = url.hostname; // Use hostname
 
     return modifyItemInLocal("blocked_hosts", {}, (blocked_hosts_tabs) => {
         let blocked_hosts = blocked_hosts_tabs[tabId] || [];
 
-        if (blocked_hosts.indexOf(host) === -1) {
-            blocked_hosts = blocked_hosts.concat([host]);
+        if (!Array.isArray(blocked_hosts)) { // Ensure it's an array
+            console.warn(`Correcting non-array value for blocked_hosts[${tabId}]`);
+            blocked_hosts = [];
         }
 
+        if (blocked_hosts.indexOf(host) === -1) {
+            blocked_hosts.push(host);
+        }
         blocked_hosts_tabs[tabId] = blocked_hosts;
-
         return blocked_hosts_tabs;
     });
 }
+
 /**
- * Increases the badged by one.
- * Borrowed and modified from https://gitlab.com/KevinRoebert/ClearUrls/-/blob/master/core_js/badgedHandler.js
+ * Increases the badge count when a potential block is detected by the non-blocking listener.
  */
 export async function increaseBadge(request, isThreatMetrix) {
     const tabId = request?.tabId;
     const url = request?.url;
+    const originUrl = request?.originUrl; // Use this for notification context
 
-    // Error checking for invalid request
-    if (!request || tabId === -1) {
-        console.error('Invalid `request` passed to increaseBadge:', {request, isThreatMetrix});
-        return;
+    if (!request || typeof tabId !== 'number' || tabId < 0) {
+        // console.warn('Invalid `request` passed to increaseBadge:', {request, isThreatMetrix});
+        return; // Ignore invalid requests (e.g., from browser's internal processes tabId=-1)
     };
 
-    // Actual badge update
     return modifyItemInLocal("badges", {}, async (badges) => {
-        // Initialize badge info for the tab if empty
         if (!badges[tabId]) {
-            badges[tabId] = {
-                counter: 0,
-                alerted: 0,
-                lastURL: url
-            };
+            badges[tabId] = { counter: 0, alerted: 0, lastURL: null }; // Init with null lastURL
         }
+        // Associate with the *current* URL of the tab if lastURL isn't set yet
+        if (!badges[tabId].lastURL) {
+             try {
+                 const tabInfo = await chrome.tabs.get(tabId);
+                 badges[tabId].lastURL = tabInfo.url;
+             } catch (e) {
+                 console.warn("Could not get tab info for badge init:", tabId, e);
+                 // Proceed without lastURL if tab is gone
+             }
+         }
 
-        // Update badge number
+
         badges[tabId].counter += 1;
 
-        // TODO better separate concerns between storage related things and browser actions
-        // Update badge text
-        updateBadges(badges[tabId].counter, tabId);
+        updateBadges(badges[tabId].counter, tabId); // Update UI
 
-        // TODO better separate concerns between storage related things and browser actions
-        // Update notification alerted status
         const notifications_enabled = await UNLOCKED_getItemFromLocal("notificationsAllowed", true);
-        if (badges[tabId].alerted === 0 && notifications_enabled) {
-            badges[tabId].alerted += 1;
+        // Only notify once per type per page load/tab session
+        const alertType = isThreatMetrix ? 'tmxAlerted' : 'portAlerted';
+        if (notifications_enabled && !badges[tabId][alertType]) {
+            badges[tabId][alertType] = true; // Mark as alerted for this type
+
+            let initiatingHost = "this site";
+            try {
+                if (originUrl) {
+                    initiatingHost = new URL(originUrl).hostname;
+                }
+            } catch (e) { /* Use default */ }
+
             if (isThreatMetrix) {
-                notifyThreatMetrix(new URL(request.originUrl).host);
+                notifyThreatMetrix(initiatingHost);
             } else {
-                notifyPortScanning(new URL(request.originUrl).host);
+                notifyPortScanning(initiatingHost);
             }
         }
 

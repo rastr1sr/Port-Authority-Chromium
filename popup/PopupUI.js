@@ -6,14 +6,11 @@ const SECTION_HEADER_ELEMENT = "h5";
 /**
  * Applies an object of variable_name: variable_value as attributes to a provided DOM element.
  *
- * @param {element} element The element to add data attributes to
+ * @param {HTMLElement} element The element to add data attributes to
  * @param {object} attributes An object of all values to add
  */
 const setAttributesOnElement = (element, attributes) => {
-    // Grab the list of attribute names to add
     const attribute_names = Object.keys(attributes);
-
-    // For each attribute, add the name and value to the elements attributes
     for (let i = 0; i < attribute_names.length; i++) {
         const attribute = attribute_names[i];
         element.setAttribute(attribute, attributes[attribute]);
@@ -22,7 +19,7 @@ const setAttributesOnElement = (element, attributes) => {
 
 function buildSectionWrapper() {
     const section_wrapper = document.createElement("div");
-    section_wrapper.classList.add("col-12", "d-flex", "flex-column");
+    section_wrapper.classList.add("col-12", "d-flex", "flex-column", "mb-3"); // Added margin bottom
     return section_wrapper;
 }
 
@@ -39,41 +36,39 @@ function buildSectionWrapper() {
  * @param {string} data_target ID of the collapse element used for the toggles data target.
  * @param {string} collapse_title Title of the collapse element
  * @param {string} toggle_text Text for the toggle button
- * @returns {element} A collapse Wrapper with a button to toggle the collapse
+ * @returns {HTMLElement} A collapse Wrapper with a button to toggle the collapse
  */
 function buildCollapseWrapperAndToggle(
     data_target,
     collapse_title,
     toggle_text
 ) {
-    // Wrapper to hold the title, toggle, and collapse element
     const collapse_wrapper = document.createElement("div");
     const title_toggle_wrapper = document.createElement("div");
 
-    // Wrapper to hold the title and toggle button
     title_toggle_wrapper.classList.add(
         "d-flex",
         "justify-content-between",
-        "align-items-center"
+        "align-items-center",
+        "mb-1" // Add some space below title/toggle row
     );
 
-    // Title of the collapse
     const title_element = document.createElement("h6");
     title_element.innerText = collapse_title;
-    title_element.classList.add("bold-text");
+    title_element.classList.add("bold-text", "mb-0"); // remove default margin
     title_toggle_wrapper.appendChild(title_element);
 
-    // Collpase toggle button
     const collapse_toggle_button = document.createElement("button");
-
     collapse_toggle_button.innerText = toggle_text;
+    // Updated for Bootstrap 5 data attributes
     const collapse_attributes = {
         type: "button",
-        class: "btn btn-link",
-        "data-bs-target": `#${data_target}`,
-        "data-bs-toggle": "collapse",
-        "aria-expanded": false,
+        class: "btn btn-link btn-sm p-0", // Make button smaller and remove padding
+        "data-bs-toggle": "collapse", // Use data-bs-toggle
+        "data-bs-target": `#${data_target}`, // Use data-bs-target
+        "aria-expanded": "false",
         "aria-controls": data_target,
+        style: "text-decoration: none;" // Remove underline from link button
     };
     setAttributesOnElement(collapse_toggle_button, collapse_attributes);
     title_toggle_wrapper.appendChild(collapse_toggle_button);
@@ -87,64 +82,80 @@ function buildCollapseWrapperAndToggle(
  * Displays a list of blocked ports in the popup UI.
  * Data is re-rendered each time the popup is opened.
  */
-async function updateBlockedPortsDisplay() {
-    let querying = await browser.tabs.query({
-        currentWindow: true,
-        active: true,
-    });
-    const tab = querying[0];
-    const tabId = tab.id;
+async function updateBlockedPortsDisplay(blocked_data_display) {
+    let currentTab;
+    try {
+        let querying = await chrome.tabs.query({
+            currentWindow: true,
+            active: true,
+        });
+        if (!querying || querying.length === 0 || !querying[0].id) {
+             console.warn("Could not get active tab ID.");
+             const noTabMsg = document.createElement('p');
+             noTabMsg.textContent = "No active tab found to display block info.";
+             noTabMsg.classList.add('text-muted', 'small', 'col-12');
+             blocked_data_display.appendChild(noTabMsg);
+             return;
+        }
+        currentTab = querying[0];
 
-    const blocked_data_display = document.getElementById(
-        "blocked_data_display"
-    );
-    // Create a wrapper element to hold the header and list of blocked hosts
-    const all_ports_wrapper = buildSectionWrapper();
+    } catch (error) {
+        console.error("Error querying tabs:", error);
+        const errorMsg = document.createElement('p');
+        errorMsg.textContent = "Error retrieving tab information.";
+        errorMsg.classList.add('text-danger', 'small', 'col-12');
+        blocked_data_display.appendChild(errorMsg);
+        return;
+    }
 
-    // Build the header/title element for this section
-    const all_ports_header = document.createElement(SECTION_HEADER_ELEMENT);
-    all_ports_header.innerText = "Blocked Port Scans:";
-    all_ports_header.classList.add("bold-text");
+    const tabId = currentTab.id;
 
-    // Add the header to the blocked hosts wrapper element
-    all_ports_wrapper.appendChild(all_ports_header);
-
-    // Grab the blocked ports from the extensions local storage.
     const blocked_ports_tabs = await getItemFromLocal("blocked_ports", {});
 
-    if (Object.entries(blocked_ports_tabs).length === 0) {
-        // Nothing to render
+    if (!blocked_ports_tabs || Object.keys(blocked_ports_tabs).length === 0) {
+        console.log("No blocked port data found in storage.");
         return;
     }
 
     const blocked_ports = blocked_ports_tabs[tabId] || {};
-
     const hosts = Object.keys(blocked_ports);
 
-    // build a tree for each host that was blocked
+    if (hosts.length === 0) {
+        console.log(`No blocked ports found for tab ${tabId}.`);
+        return;
+    }
+
+    const all_ports_wrapper = buildSectionWrapper();
+    const all_ports_header = document.createElement(SECTION_HEADER_ELEMENT);
+    all_ports_header.innerText = "Blocked Port Scans:";
+    all_ports_header.classList.add("bold-text");
+    all_ports_wrapper.appendChild(all_ports_header);
+
     for (let i_host = 0; i_host < hosts.length; i_host++) {
-        // Build the wrapper for displaying the host name and ports blocked
         const host = hosts[i_host];
-        const host_id = `host${i_host}`;
+        const host_id = `collapse-ports-${tabId}-${i_host}`;
         const host_wrapper = buildCollapseWrapperAndToggle(
             host_id,
             host,
             "View Ports"
         );
 
-        // build the list of blocked ports then append it to the wrapper
         const hosts_ul = document.createElement("div");
         hosts_ul.id = host_id;
-        hosts_ul.classList.add("list-unstyled", "collapse");
+        hosts_ul.classList.add("collapse");
 
-        const ports = blocked_ports[hosts[i_host]];
+        const ports = blocked_ports[host] || []; // Safely access ports
 
-        // Add each port to the HTML
+        if (!Array.isArray(ports)) {
+            console.warn(`Ports data for host ${host} is not an array:`, ports);
+            continue; // Skip this host if data is malformed
+        }
+
         for (let i_port = 0; i_port < ports.length; i_port++) {
             const port = ports[i_port];
             const port_element = document.createElement("div");
-            port_element.innerText = port;
-            port_element.classList.add("ps-2");
+            port_element.innerText = `:${port}`;
+            port_element.classList.add("ps-3", "small"); // Indent and make text smaller
             hosts_ul.appendChild(port_element);
         }
 
@@ -153,79 +164,95 @@ async function updateBlockedPortsDisplay() {
     }
 
     blocked_data_display.appendChild(all_ports_wrapper);
-
-    // Append the header to the GUI
-    const blocked_data_display_ports = document.getElementById(
-        "blocked_data_display"
-    );
-    blocked_data_display_ports.appendChild(all_ports_wrapper);
 }
 
-async function updateBlockedHostsDisplay() {
-    let querying = await browser.tabs.query({
-        currentWindow: true,
-        active: true,
-    });
-    const tab = querying[0];
-    const tabId = tab.id;
 
-    // grab the list of blocked hosts from extension storage
+async function updateBlockedHostsDisplay(blocked_data_display) {
+     let currentTab;
+     try {
+         let querying = await chrome.tabs.query({
+             currentWindow: true,
+             active: true,
+         });
+         if (!querying || querying.length === 0 || !querying[0].id) {
+              console.warn("Could not get active tab ID for blocked hosts.");
+              return;
+         }
+         currentTab = querying[0];
+     } catch (error) {
+         console.error("Error querying tabs:", error);
+         return;
+     }
 
-    // Create a wrapper element to hold the header and list of blocked hosts
+    const tabId = currentTab.id;
+
+    const blocked_hosts_tabs = await getItemFromLocal("blocked_hosts", {});
+
+     if (!blocked_hosts_tabs || Object.keys(blocked_hosts_tabs).length === 0) {
+         console.log("No blocked tracking host data found in storage.");
+         return;
+     }
+
+    const blocked_hosts = blocked_hosts_tabs[tabId] || [];
+
+    if (blocked_hosts.length === 0) {
+        console.log(`No blocked tracking hosts found for tab ${tabId}.`);
+        return;
+    }
+
     const hosts_wrapper = buildSectionWrapper();
-
-    // Build the header/title element for this section
     const host_header = document.createElement(SECTION_HEADER_ELEMENT);
     host_header.innerText = "Blocked Tracking Scripts:";
     host_header.classList.add("bold-text");
-
-    // Add the header to the blocked hosts wrapper element
     hosts_wrapper.appendChild(host_header);
 
-    // create the UL element to hold all the blocked hosts
     const hosts_ul = document.createElement("ul");
-    hosts_ul.classList.add("list-unstyled");
+    hosts_ul.classList.add("list-unstyled", "ps-3"); // Indent the list
 
-    try {
-        const blocked_hosts_tabs = await getItemFromLocal(
-            "blocked_hosts",
-            {}
-        );
-        const blocked_hosts = blocked_hosts_tabs[tabId] || [];
-
-        // Build a list of host names as li elements
-        for (let host = 0; host < blocked_hosts.length; host++) {
-            //Grab the host name
-            const host_name = blocked_hosts[host];
-
-            // Create the list element for the blocked host and set the text to the hosts name
-            const host_li = document.createElement("li");
-            host_li.classList.add("ps-2", "brand-text-color", "bold-text");
-            host_li.innerText = host_name;
-
-            // Add the list element to the hosts UL
-            hosts_ul.appendChild(host_li);
-        }
-    } catch (error) {
-        // Something went wrong, empty the ul to be safe
-        hosts_ul.innerText = "";
+    if (!Array.isArray(blocked_hosts)) {
+        console.warn(`Blocked hosts data for tab ${tabId} is not an array:`, blocked_hosts);
+        return; // Exit if data is malformed
     }
-    // Add the list of blocked hosts to the wrapper containing the section header
-    hosts_wrapper.appendChild(hosts_ul);
 
-    // Append the list of blocked hosts to the Popups blocked_data_display section
-    const blocked_data_display = document.getElementById(
-        "blocked_data_display"
-    );
+    for (let i = 0; i < blocked_hosts.length; i++) {
+        const host_name = blocked_hosts[i];
+        if (typeof host_name !== 'string') continue; // Skip non-string entries
+
+        const host_li = document.createElement("li");
+        host_li.classList.add("brand-text-color", "bold-text", "small");
+        host_li.innerText = host_name;
+
+        hosts_ul.appendChild(host_li);
+    }
+
+    hosts_wrapper.appendChild(hosts_ul);
     blocked_data_display.appendChild(hosts_wrapper);
 }
 
-// Helper function for calling all DOM-Modifying functions
-function buildDataMarkup() {
-    // Shows any and all hosts that attempted to connect to a tracking service
-    updateBlockedHostsDisplay();
-    // Shows any and all ports that were blocked from scanning. Ports are sorted based on host that attempted the port scan
-    updateBlockedPortsDisplay();
+async function buildDataMarkup() {
+    const blocked_data_display = document.getElementById("blocked_data_display");
+    if (!blocked_data_display) {
+        console.error("Could not find #blocked_data_display element.");
+        return;
+    }
+    blocked_data_display.innerHTML = ''; // Clear previous content
+
+    try {
+        await updateBlockedHostsDisplay(blocked_data_display);
+        await updateBlockedPortsDisplay(blocked_data_display);
+
+         // If no content was added, display a message
+         if (blocked_data_display.children.length === 0) {
+            const noBlocksMsg = document.createElement('p');
+            noBlocksMsg.textContent = "No blocked activity detected on this tab.";
+            noBlocksMsg.classList.add('text-muted', 'small', 'col-12');
+            blocked_data_display.appendChild(noBlocksMsg);
+         }
+
+    } catch (error) {
+        console.error("Error building data markup:", error);
+        blocked_data_display.innerHTML = '<p class="text-danger col-12">Error displaying blocked data.</p>';
+    }
 }
 
 buildDataMarkup();

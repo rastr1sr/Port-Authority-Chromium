@@ -1,206 +1,289 @@
-import { getItemFromLocal, setItemInLocal, modifyItemInLocal,
-    addBlockedPortToHost, addBlockedTrackingHost, increaseBadge } from "./BrowserStorageManager.js";
+import {
+    getItemFromLocal, setItemInLocal, modifyItemInLocal,
+    addBlockedPortToHost, addBlockedTrackingHost, increaseBadge,
+    toggleBlocking
+} from "./BrowserStorageManager.js";
 
-async function startup(){
-    // No need to check and initialize notification, state, and allow list values as they will 
-    // fall back to the default values until explicitly set
-    console.log("Startup called");
+// Local filter regex (ensure backslashes are escaped for JS String)
+// Note: This regex will be used in the *non-blocking* listener for *detection*, not blocking.
+const local_filter_regex = new RegExp("\\b(^(http|https|wss|ws|ftp|ftps):\\/\\/127[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\\/\\/0\\.0\\.0\\.0|^(http|https|wss|ws|ftp|ftps):\\/\\/(10)([.](25[0-5]|2[0-4][0-9]|1[0-9]{1,2}|[0-9]{1,2})){3}|^(http|https|wss|ws|ftp|ftps):\\/\\/localhost|^(http|https|wss|ws|ftp|ftps):\\/\\/172[.](1[6-9]|2[0-9]|3[0-1])[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\\/\\/192\\.168[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\\/\\/169\\.254[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))", "i");
 
-	// Get the blocking state from cold storage
-    const state = await getItemFromLocal("blocking_enabled", true); 
-	if (state === true) {
-	    start();
-	} else {
-	    stop();
-	}
+// ThreatMetrix CNAME target regex
+const thm_cname_target_regex = new RegExp("online-metrix\\.net$", "i");
+
+let isListenerAttached = false; // Track non-blocking listener state
+
+async function initialize() {
+    console.log("Port Authority Service Worker Started");
+    const blockingEnabled = await getItemFromLocal("blocking_enabled", true);
+    await toggleBlocking(blockingEnabled); // Sync DNR state with storage
+
+    if (blockingEnabled) {
+        attachNonBlockingListener();
+    }
+
+    const allowedList = await getItemFromLocal("allowed_domain_list", []);
+    // Allowlist rules update is handled internally by BrowserStorageManager now
 }
 
-// This regex is explained here https://regex101.com/r/LSL180/1 below I needed to change \b -> \\b
-const local_filter = new RegExp("\\b(^(http|https|wss|ws|ftp|ftps):\/\/127[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\/\/0.0.0.0|^(http|https|wss|ws|ftp|ftps):\/\/(10)([.](25[0-5]|2[0-4][0-9]|1[0-9]{1,2}|[0-9]{1,2})){3}|^(http|https|wss|ws|ftp|ftps):\/\/localhost|^(http|https|wss|ws|ftp|ftps):\/\/172[.](0?16|0?17|0?18|0?19|0?20|0?21|0?22|0?23|0?24|0?25|0?26|0?27|0?28|0?29|0?30|0?31)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\/\/192[.]168[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|^(http|https|wss|ws|ftp|ftps):\/\/169[.]254[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)[.](?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?:\/([789]|1?[0-9]{2}))?\\b", "i");
-// Create a regex to find all sub-domains for online-metrix.net  Explained here https://regex101.com/r/f8LSTx/2
-const thm = new RegExp("online-metrix[.]net$", "i");
+initialize();
 
-async function cancel(requestDetails) {
-    // First check if it's a same-origin request
-    if(!requestDetails.thirdParty) {
-        try {
-            const origin = new URL(requestDetails.originUrl);
-            const request = new URL(requestDetails.url);
 
-            // Also want to run our own check, for paranoia's sake
-            if(origin.origin === request.origin) {
-                console.log("Same-origin/first-party request allowed:", {origin, request, thirdParty: requestDetails.thirdParty});
-                return { cancel: false };
-            } else {
-                console.warn("`requestDetails.thirdParty` and our check of origins disagree:", {origin, request, thirdParty: requestDetails.thirdParty});
-            }
-        } catch(error) {
-            console.error("Error parsing request `originUrl` or `url`:", requestDetails, error);
+// This function DETECTS requests that SHOULD be blocked, to trigger UI updates.
+// The actual BLOCKING is done by Declarative Net Request rules.
+async function detectPotentialBlock(requestDetails) {
+    if (requestDetails.tabId < 0) {
+        return; // Ignore internal browser requests
+    }
+     if (requestDetails.url.startsWith('data:')) {
+         return; // Ignore data URLs
+     }
+
+    let requestUrl;
+    try {
+        requestUrl = new URL(requestDetails.url);
+    } catch (e) {
+        console.warn("Could not parse request URL:", requestDetails.url, e);
+        return;
+    }
+
+    // 1. Check Allowlist (Initiator Domain) - DNR handles the actual allow, but we skip detection logic if allowed.
+    let initiatorUrl;
+    let initiatorHost = null;
+     try {
+        // Fallback for missing originUrl
+        initiatorUrl = requestDetails.initiator ? new URL(requestDetails.initiator) : (requestDetails.originUrl ? new URL(requestDetails.originUrl) : null);
+        if (initiatorUrl) {
+             initiatorHost = initiatorUrl.hostname;
+        }
+     } catch(e) {
+        console.warn("Could not parse initiator/origin URL:", requestDetails.initiator || requestDetails.originUrl, e);
+     }
+
+    if (initiatorHost) {
+        const allowed_domains_list = await getItemFromLocal("allowed_domain_list", []);
+        if (allowed_domains_list.includes(initiatorHost)) {
+            return; // Don't badge/notify for allowlisted initiators
         }
     }
 
+    // 2. Check if it's a Local Resource Request (Port Scan attempt)
+    if (local_filter_regex.test(requestDetails.url)) {
+         // Check if it's a third-party request (approximated)
+         // DNR handles blocking, but we check here to simulate the old logic for badging/notification context
+         let isThirdParty = true; // Assume third party unless proven otherwise
+         if (initiatorUrl && requestUrl.hostname === initiatorHost) {
+             isThirdParty = false;
+         } else if (!initiatorUrl && requestUrl.protocol.startsWith('http')) {
+             // If initiator is missing, and it's an http request, assume it's likely third-party or top-level nav (heuristic)
+         } else {
+            // If initiator known and different, definitely third party
+            // If initiator unknown and not http (e.g. extension), maybe not third party? Be cautious.
+         }
 
-    // Then check the allowlist
-    let check_allowed_url;
+         // Only count/notify if it appears to be a cross-origin attempt to a local resource
+         if (isThirdParty) {
+            try {
+                await increaseBadge(requestDetails, false);
+                await addBlockedPortToHost(requestUrl, requestDetails.tabId);
+            } catch (error) {
+                 console.error("Error updating state for port scan detection:", error);
+            }
+         }
+        return; // Don't proceed to CNAME check if it matched local filter
+    }
+
+
+    // 3. Check for ThreatMetrix via CNAME (if not matched by static DNR list)
+    // This check is best-effort as DNR blocks known domains statically.
+    // We perform the DNS check here mainly for notification/badging if a *new* alias is encountered.
     try {
-        check_allowed_url = new URL(requestDetails.originUrl);
-    } catch(error) {
-        console.error("Aborted filtering on domain due to unparseable originUrl: ", requestDetails.originUrl, error);
-        return { cancel: false }; // invalid origin
+        const dnsResult = await chrome.dns.resolve(requestUrl.hostname);
+        if (dnsResult && dnsResult.canonicalName && thm_cname_target_regex.test(dnsResult.canonicalName)) {
+             try {
+                await increaseBadge(requestDetails, true);
+                await addBlockedTrackingHost(requestUrl, requestDetails.tabId);
+             } catch (error) {
+                 console.error("Error updating state for ThreatMetrix CNAME detection:", error);
+             }
+        }
+    } catch (e) {
+        // DNS resolution can fail for many reasons (NXDOMAIN, network error, etc.), often not an error
     }
-    const allowed_domains_list = await getItemFromLocal("allowed_domain_list", []);
-    // Perform an exact match against the whitelisted domains (dont assume subdomains are allowed)
-    const domainIsWhiteListed = allowed_domains_list.some(
-        (domain) => check_allowed_url.host === domain
-    );
-    if (domainIsWhiteListed){
-        console.debug("Aborted filtering on domain due to whitelist: ", check_allowed_url);
-        return { cancel: false };
-    }
+}
 
-    // Used in both local and threatmetrix checks
-    let url;
+function attachNonBlockingListener() {
+    if (isListenerAttached) {
+        return;
+    }
     try {
-        url = new URL(requestDetails.url);
-    } catch(error) {
-        console.error("Error filtering on domain due to unparseable request URL: ", requestDetails.url, error);
-    }
-
-
-    // Local request check
-    if (local_filter.test(requestDetails.url)) {
-        // The network request is going to a local address and has already failed a same-origin check, block it
-        console.debug("Blocking domain for portscanning: ", url);
-        increaseBadge(requestDetails, false); // increment badge and alert
-        addBlockedPortToHost(url, requestDetails.tabId);
-        return { cancel: true };
-    }
-
-    // The early return in the if case above makes sure we are not searching the CNAME of local addresses
-    // Send a request to get the CNAME of the webrequest
-    const resolving = await browser.dns.resolve(url.host, ["canonical_name"]);
-    // If the CNAME redirects to a online-metrix.net domain -> Block
-    if (thm.test(resolving.canonicalName)) {
-        console.debug("Blocking domain for being a threatmetrix match: ", {url: url, cname: resolving.canonicalName});
-        increaseBadge(requestDetails, true); // increment badge and alert
-        addBlockedTrackingHost(url, requestDetails.tabId);
-        return { cancel: true };
-    }
-    
-    // Dont block sites that don't alert the detection
-    return { cancel: false };
-} // end cancel()
-
-async function start() {  // Enables blocking
-    try {
-        //Add event listener
-        browser.webRequest.onBeforeRequest.addListener(
-            cancel,
-            { urls: ["<all_urls>"] }, // Match all HTTP, HTTPS, FTP, FTPS, WS, WSS URLs.
-            ["blocking"] // if cancel() returns true block the request.
+        chrome.webRequest.onBeforeRequest.addListener(
+            detectPotentialBlock,
+            { urls: ["<all_urls>"], types: ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"] },
+            []
         );
-
-        console.log("Attached `onBeforeRequest` listener successfully: blocking enabled");
-        await setItemInLocal("blocking_enabled", true);
+        isListenerAttached = true;
+        console.log("Attached NON-BLOCKING webRequest listener for detection.");
     } catch (e) {
-        console.error("START() ", e);
+        console.error("Failed to attach non-blocking listener:", e);
     }
 }
 
-async function stop() {  // Disables blocking
+function removeNonBlockingListener() {
+    if (!isListenerAttached) {
+        return;
+    }
     try {
-        //Remove event listener
-        browser.webRequest.onBeforeRequest.removeListener(cancel);
-
-        console.log("Removed `onBeforeRequest` listener successfully: blocking disabled");
-        await setItemInLocal("blocking_enabled", false);
+        // Check if the listener actually exists before trying to remove
+        if (chrome.webRequest.onBeforeRequest.hasListener(detectPotentialBlock)) {
+             chrome.webRequest.onBeforeRequest.removeListener(detectPotentialBlock);
+             isListenerAttached = false;
+             console.log("Removed NON-BLOCKING webRequest listener.");
+        } else {
+             isListenerAttached = false; // Correct state if listener wasn't found
+        }
     } catch (e) {
-        console.error("STOP() ", e);
+        console.error("Failed to remove non-blocking listener:", e);
+         isListenerAttached = false; // Ensure state is false on error
     }
 }
 
-async function isListening() { // returns if blocking is on
-    const storage_state = await getItemFromLocal("blocking_enabled", true);
-    const listener_attached_state = browser.webRequest.onBeforeRequest.hasListener(cancel);
 
-    // If storage says that blocking is enabled when it actually isn't, soft throw an error to the console
-    if (storage_state !== listener_attached_state) {
-        console.error("Mismatch in blocking state according to storage value and listener attached status:", {
-            storage_state,
-            listener_attached_state
+// --- Blocking Control ---
+async function startBlocking() {
+    await toggleBlocking(true);
+    attachNonBlockingListener();
+    await setItemInLocal("blocking_enabled", true);
+    console.log("Blocking enabled (DNR + Detection Listener).");
+}
+
+async function stopBlocking() {
+    await toggleBlocking(false);
+    removeNonBlockingListener();
+    await setItemInLocal("blocking_enabled", false);
+    console.log("Blocking disabled (DNR + Detection Listener).");
+}
+
+async function isBlockingEnabled() {
+    // Check storage first as the source of truth for user intent
+    const storageState = await getItemFromLocal("blocking_enabled", true);
+
+    // Also check if listener is attached (should match storageState)
+    if (storageState !== isListenerAttached) {
+         console.warn("Mismatch between storage blocking state and listener state:", {storageState, isListenerAttached});
+         // Attempt to fix listener state based on storage
+         if (storageState) attachNonBlockingListener(); else removeNonBlockingListener();
+    }
+
+    return storageState;
+}
+
+
+// --- Event Listeners ---
+
+// Tab Update Listener (Reset counters on navigation)
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tabInfo) => {
+    // Check if the URL changed, ignore other updates (like loading status, favicons)
+    // Also ignore about:blank, chrome:// etc.
+    if (changeInfo.url && changeInfo.url.startsWith('http')) {
+        await modifyItemInLocal("badges", {}, (currentBadges) => {
+            if (currentBadges[tabId] && currentBadges[tabId].lastURL !== changeInfo.url) {
+                // Reset specific tab's badge info
+                currentBadges[tabId] = {
+                    counter: 0,
+                    portAlerted: false,
+                    tmxAlerted: false,
+                    lastURL: changeInfo.url
+                };
+            } else if (!currentBadges[tabId]) {
+                // Initialize if tab wasn't tracked before
+                 currentBadges[tabId] = { counter: 0, portAlerted: false, tmxAlerted: false, lastURL: changeInfo.url };
+            }
+            return currentBadges;
+        });
+
+        // Reset badge text for the tab
+        try {
+             await chrome.action.setBadgeText({ text: '', tabId: tabId });
+        } catch (e) { /* Tab might be closed already */ }
+
+
+        // Clear out the logged blocked ports/hosts for the tab
+        await modifyItemInLocal("blocked_ports", {}, (blocked_ports_object) => {
+            delete blocked_ports_object[tabId];
+            return blocked_ports_object;
+        });
+        await modifyItemInLocal("blocked_hosts", {}, (blocked_hosts_object) => {
+            delete blocked_hosts_object[tabId];
+            return blocked_hosts_object;
         });
     }
+});
 
-    // Rely on the actual listener being attached as the ground source of truth over what storage says
-    return listener_attached_state;
-}
+// Tab Removed Listener (Cleanup data) - Optional but good practice
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+     await modifyItemInLocal("badges", {}, (currentBadges) => {
+         delete currentBadges[tabId];
+         return currentBadges;
+     });
+     await modifyItemInLocal("blocked_ports", {}, (blocked_ports_object) => {
+         delete blocked_ports_object[tabId];
+         return blocked_ports_object;
+     });
+     await modifyItemInLocal("blocked_hosts", {}, (blocked_hosts_object) => {
+         delete blocked_hosts_object[tabId];
+         return blocked_hosts_object;
+     });
+});
 
-/**
- * Call by each tab is updated.
- * And if url has changed.
- * Borrowed and modified from https://gitlab.com/KevinRoebert/ClearUrls/-/blob/master/core_js/badgedHandler.js
- */
-async function handleUpdated(tabId, changeInfo, tabInfo) {
-    // TODO investigate a better way to interact with current locking practices
-    const badges = await getItemFromLocal("badges", {});
-    if (!badges[tabId] || !changeInfo.url) return;
 
-    if (badges[tabId].lastURL !== changeInfo.url) {
-        badges[tabId] = {
-            counter: 0,
-            alerted: 0,
-            lastURL: tabInfo.url
-        };
-        await setItemInLocal("badges", badges);
-
-        // Clear out the blocked ports for the current tab
-        await modifyItemInLocal("blocked_ports", {},
-            (blocked_ports_object) => {
-                delete blocked_ports_object[tabId];
-                return blocked_ports_object;
-            });
-
-        // Clear out the hosts for the current tab
-        await modifyItemInLocal("blocked_hosts", {},
-            (blocked_hosts_object) => {
-                delete blocked_hosts_object[tabId];
-                return blocked_hosts_object;
-            });
+// Runtime Message Listener (from Popup/Options)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Basic origin check (less strict, relies on extension ID)
+    if (!sender.url || !sender.url.startsWith(chrome.runtime.getURL(""))) {
+        console.warn('Message from unexpected sender:', sender);
+        return false;
     }
-}
 
-async function onMessage(message, sender) {
-  // Add origin check for security
-  const extensionOrigin = new URL(browser.runtime.getURL("")).origin;
-  if (sender.url !== `${extensionOrigin}/popup/popup.html`) {
-    console.warn('Message from unexpected origin:', sender.url);
-    return;
-  }
-
-  switch(message.type) {
-    case 'popupInit':
-      return {
-        isListening: await isListening(),
-        notificationsAllowed: await getItemFromLocal("notificationsAllowed", true),
-      };
-    case 'toggleEnabled':
-      message.value ? await start() : await stop();
-      break;
-    case 'setItemInLocal':
-      await setItemInLocal(message.key, message.value);
-      break;
-    case 'setNotificationsAllowed':
-      await setItemInLocal("notificationsAllowed", message.value);
-      break;
-    case 'getItemInLocal':
-      return await getItemFromLocal(message.key, message.defaultValue);
-    default:
-      console.warn('Port Authority: unknown message: ', message);
-      break;
-  }
-}
-browser.runtime.onMessage.addListener(onMessage);
-
-startup();
-// Call by each tab is updated.
-browser.tabs.onUpdated.addListener(handleUpdated);
+    if (message.type === 'popupInit') {
+        (async () => {
+            const listening = await isBlockingEnabled();
+            const notifications = await getItemFromLocal("notificationsAllowed", true);
+            sendResponse({ isListening: listening, notificationsAllowed: notifications });
+        })();
+        return true; // Indicate async response
+    } else if (message.type === 'toggleEnabled') {
+        (async () => {
+            message.value ? await startBlocking() : await stopBlocking();
+            sendResponse({ success: true });
+        })();
+        return true; // Indicate async response
+    } else if (message.type === 'setNotificationsAllowed') {
+         (async () => {
+             await setItemInLocal("notificationsAllowed", message.value);
+             sendResponse({ success: true });
+         })();
+         return true; // Indicate async response
+    } else if (message.type === 'getItemFromLocal') {
+         (async () => {
+             const value = await getItemFromLocal(message.key, message.defaultValue);
+             sendResponse(value);
+         })();
+         return true; // Indicate async response
+    } else if (message.type === 'setItemInLocal') {
+         (async () => {
+            try {
+                 await setItemInLocal(message.key, message.value);
+                 sendResponse({ success: true });
+            } catch (error) {
+                 console.error(`Error setting item via message for key ${message.key}:`, error);
+                 sendResponse({ success: false, error: error.message });
+            }
+         })();
+         return true; // Indicate async response
+    }
+     else {
+        console.warn('Port Authority: unknown message type: ', message.type);
+        return false; // No async response intended
+    }
+});

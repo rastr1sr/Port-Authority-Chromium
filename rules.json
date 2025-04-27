@@ -1,0 +1,238 @@
+[
+    {
+      "id": 1,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "requestDomains": [ "localhost" ],
+        "excludedInitiatorDomains": ["localhost"],
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 2,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||127.*",
+        "excludedInitiatorDomains": ["localhost"],
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 3,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||0.0.0.0",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 4,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||10.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 5,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.16.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 6,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.17.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 7,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.18.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 8,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.19.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 9,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.20.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 10,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.21.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 11,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.22.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 12,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.23.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 13,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.24.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 14,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.25.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 15,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.26.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 16,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.27.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 17,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.28.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 18,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.29.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 19,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.30.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 20,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||172.31.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 21,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||192.168.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 22,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "urlFilter": "||169.254.*",
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    },
+    {
+      "id": 100,
+      "priority": 1,
+      "action": { "type": "block" },
+      "condition": {
+        "requestDomains": [
+          "online-metrix.net",
+          "h.online-metrix.net",
+          "h-ebay.online-metrix.net",
+          "h-netflix.online-metrix.net",
+          "h-discover.online-metrix.net",
+          "h-homedepot.online-metrix.net",
+          "h-hsid.online-metrix.net",
+          "h-intuit.online-metrix.net",
+          "src.ebay-us.com",
+          "content.discover.com",
+          "customer.homedepot.com",
+          "rba-screen.healthsafe-id.com",
+          "pf.intuit.com",
+          "mpsnare.iesnare.com",
+          "fp.hdsupplysolutions.com",
+          "fp.disney.go.com",
+          "h.chase.co.uk",
+          "analytics.vacations.united.com",
+          "tmx.bestbuy.com",
+          "thm12.visa.com",
+          "tmetrix.my.chick-fil-a.com",
+          "cfa.fidelity.com",
+          "content22.citibank.com",
+          "deviceauth.dmv.ca.gov",
+          "dfp.t-mobile.at",
+          "fp.ups.com"
+        ],
+        "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"]
+      }
+    }
+  ]

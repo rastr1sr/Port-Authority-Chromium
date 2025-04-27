@@ -1,88 +1,87 @@
-[<img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="for Firefox" height="60px">](https://addons.mozilla.org/firefox/addon/port-authority)
+# <sub><img src="icons/logo-96.png" width="64px" height="64px"></sub> Port Authority (Chromium MV3 Version)
 
-[![Firefox Rating](https://img.shields.io/amo/stars/css-exfil-protection.svg?label=Rating&style=for-the-badge)](https://addons.mozilla.org/firefox/addon/port-authority)
-![Mozilla Add-on](https://img.shields.io/amo/v/port-authority?label=Latest%20Version&style=for-the-badge)
+**Important:** This repository contains a **Manifest V3 port** of the original [Port Authority Firefox extension](https://github.com/ACK-J/Port_Authority) specifically for **Chromium-based browsers (like Chrome, Edge, Brave)**.
 
-# <sub><img src="https://user-images.githubusercontent.com/60232273/124614032-d99b3480-de41-11eb-96b9-8e830240a698.png" width="64px" height="64px"></sub> Port Authority
+*   **Firefox Users:** Please use the official version from the original creator available on the [Mozilla Add-ons Store (AMO)](https://addons.mozilla.org/firefox/addon/port-authority). This repository **does not** support Firefox.
+*   **Chromium Users:** This version leverages Manifest V3 features and requires a Chromium browser that supports the `chrome.dns` API (currently available in Dev/Canary channels, planned for stable release).
 
-This addon blocks websites from using javascript to port scan your computer/internal-network and also dynamically blocks all LexisNexis endpoints from running their invasive data collection scripts.
+This extension blocks websites from using JavaScript to port scan your computer/internal network and dynamically blocks known LexisNexis (ThreatMetrix) endpoints from running their invasive data collection scripts within Chromium browsers.
 
-| | | |
-|:-------------------------:|:-------------------------:|:-------------------------:|
-| <img width="287" alt="GUI" src="https://github.com/ACK-J/Port_Authority/assets/60232273/2ef1fbef-d46c-44b0-9653-cd110431a3db">The GUI allows the user to turn on or off global blocking, notifications and add domains to a whitelist using the gear in the top right corner.|<img width="1604" alt="Chick-Fil-A" src="https://github-production-user-asset-6210df.s3.amazonaws.com/60232273/268320629-47c8e07d-0402-46e1-9a1a-e125d0198c52.png">Add or remove domains from the whitelist such that if they make a local request or request a Lexis Nexis script, it will be allowed.|<img width="1604" alt="Discord" src="https://user-images.githubusercontent.com/60232273/125358212-a0c5f880-e336-11eb-8d42-c0067b2133c0.png"> Discord port scans your computer using websockets, attempting to connect with the desktop Discord app.|
+---
+
+## About This Chromium MV3 Port
+
+**Disclaimer:** Please note that this port was created by an amateur developer (me !) as a learning exercise. It's a best-effort attempt to migrate the original extension to Manifest V3 for Chromium, and due to my limited experience, there's no guarantee it will work flawlessly or cover all edge cases. Please pardon any bugs or suboptimal programming practices you might encounter.
+
+---
+
+This version represents a significant migration from the original Firefox Manifest V2 extension to Google's Manifest V3 platform for Chromium browsers. Here's a summary of the key changes and decisions:
+
+1.  **Manifest V3:** The core architecture was updated to MV3, requiring major changes:
+    *   **Background Service Worker:** Replaced the persistent background script with a non-persistent Service Worker (`background.js`). Logic was adapted to handle the service worker potentially terminating and restarting.
+    *   **Declarative Net Request (DNR) API:** MV3 heavily restricts blocking web requests. The powerful `webRequestBlocking` API used in the Firefox version is **not available**. We now use the `declarativeNetRequest` API for the actual blocking:
+        *   **Static Rules:** Blocking rules for private IP addresses (`localhost`, `127.0.0.1`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `169.254.x.x`) and known ThreatMetrix-related domains are defined statically in `rules.json`. This provides fast, browser-native blocking.
+        *   **Allowlist:** Domain allowlisting is implemented using *dynamic* DNR rules, which are added/removed based on user settings.
+    *   **Host Permissions:** The `<all_urls>` permission is required for `declarativeNetRequest` to apply rules globally and for the non-blocking `webRequest` listener.
+2.  **`chrome.dns` API Requirement:**
+    *   A key feature of the original extension was dynamically blocking ThreatMetrix by resolving CNAME records in real-time.
+    *   The `declarativeNetRequest` API **cannot** perform DNS lookups.
+    *   To retain some dynamic detection capability (primarily for notifications and badge counts, as DNR handles the primary block of *known* domains), this MV3 version uses the `chrome.dns.resolve` API.
+    *   **Crucially, the `chrome.dns` API is currently only available in Chrome Dev/Canary channels (as of early 2024) and is expected to roll out to Stable later.** This is why this version **requires a Chromium Dev build or newer** for full functionality (specifically, the CNAME check part). Without it, only static rule blocking will work.
+3.  **Non-Blocking `webRequest` Listener:**
+    *   Since DNR handles the blocking, we can no longer rely on `webRequestBlocking` to count blocks or trigger notifications accurately *at the moment of blocking*.
+    *   Instead, a *non-blocking* `chrome.webRequest.onBeforeRequest` listener runs in parallel. It uses similar logic (regex for local IPs, `chrome.dns` for CNAME checks) to *detect* requests that *should* be blocked by DNR.
+    *   This listener's sole purpose is to **update the badge count** on the extension icon and **trigger user notifications**. It does **not** perform any blocking itself. This is a necessary workaround due to MV3 limitations.
+4.  **Namespace Changes:** All `browser.*` APIs were replaced with their `chrome.*` equivalents (`chrome.storage`, `chrome.tabs`, `chrome.notifications`, `chrome.action`, `chrome.runtime`, `chrome.dns`).
+5.  **Code Structure:** While adapting to MV3, efforts were made to maintain modularity (e.g., `BrowserStorageManager.js`) and update UI components (`popup.html`, `settings.html` and associated JS).
+6.  **Focus:** This port is exclusively for Chromium. Firefox-specific features, settings (`browser_specific_settings`), and APIs have been removed.
 
 ----
-## What does this addon do?
-1. Blocks all possible types of port scanning through your browser (HTTP/HTTPS/WS/WSS/FTP/FTPS)
-2. Dynamically blocks the ThreatMetrix tracking scripts made by one of the largest and least ethical data brokers in the world (Lexis Nexis)
-3. Easily auditable, with the core functionality being about 250 lines of code. [HERE](https://github.com/ACK-J/Port_Authority/blob/main/background.js)
-4. Provides an optional whitelist to prevent portscans and tracking scripts from being blocked on trusted domains
-5. Gives a nice notification when one of the above scenarios are blocked
-6. This addon doesn't store/transmit/log any data or metadata about you or your requests... because, ya know, privacy
+## What does this Chromium extension do?
 
-## Donations
-- Monero Address: `89jYJvX3CaFNv1T6mhg69wK5dMQJSF3aG2AYRNU1ZSo6WbccGtJN7TNMAf39vrmKNR6zXUKxJVABggR4a8cZDGST11Q4yS8`
+1.  **Blocks Port Scanning Attempts:** Uses the `declarativeNetRequest` API to block requests from websites to private network IP addresses (localhost, RFC1918 ranges, link-local) via HTTP, HTTPS, WebSockets (WS/WSS).
+2.  **Blocks Known ThreatMetrix Trackers:** Includes static rules to block known domains associated with LexisNexis ThreatMetrix tracking scripts. It also uses the `chrome.dns` API (when available) in a non-blocking listener to detect *potential* ThreatMetrix domains via CNAME lookups for notification purposes.
+3.  **Allowlist:** Provides an options page to add trusted domains, allowing them to bypass the extension's blocking rules.
+4.  **Notifications & Badge Count:** Alerts you when potential port scans or tracking scripts are detected and updates the extension icon badge to show a count of blocked resources for the active tab.
+5.  **Privacy Focused:** Designed not to store or transmit any data about your browsing activity or the specific requests being blocked (beyond the temporary list shown in the popup for the current tab).
 
-## Regex Explanation
-- Explanation of the regex used to determine local addresses: https://regex101.com/r/LSL180/1
-- Explanation of the regex which is used to match the protocol: https://regex101.com/r/f8LSTx/2
+## Why use Port Authority?
 
-## Test All Forms of Port Scanning 
-- A webpage I made to test all forms of scanning in one location using the [./TestPortScans.html](https://github.com/ACK-J/Port_Authority/blob/main/TestPortScans.html) file
+Websites should not be probing your internal network. Furthermore, invasive tracking scripts like ThreatMetrix collect hundreds of data points about your device and network, often without clear consent. This extension aims to enhance your privacy and security by blocking these activities. The original author's motivation and research into ThreatMetrix can be found [here](https://github.com/ACK-J/Port_Authority#why-i-wrote-this-addon).
 
-## Test HTTP / HTTPS Portscanning
-- Site where you can test if HTTP port scanning works: https://defuse.ca/in-browser-port-scanning.htm
-- Site where you can test if HTTP port scanning works: https://inteltechniques.com/logger/
-- Site where you can test if HTTP port scanning works (Output gives false positives): http://samy.pl/webscan/
-- Click CTRL + Shift + I to see the networking tab where the blocked port scans will be shown.
+## Installation (Chromium Dev/Canary Recommended)
 
-## Test Websocket Portscanning
-- Site where you can test if WebSocket port scanning works: https://discord.com/invite/32ZNZVN
-- Click CTRL + Shift + I to see the networking tab where the blocked port scans will be shown.
+**Prerequisites:**
+*   A Chromium-based browser (Chrome, Edge, Brave, etc.)
+*   **Recommended:** Developer Channel build or newer (e.g., Chrome Dev, Chrome Canary) to ensure the `chrome.dns` API is available for full functionality.
 
-## Test sites that port scan you or otherwise run ThreatMetrix scripts
-- The full list of endpoints can be found [HERE](https://gist.github.com/ACK-J/65dfe84fcf5a06c46364e5f2bd29c118).
+**Steps:**
+1.  Download this repository (e.g., click "Code" -> "Download ZIP").
+2.  Unzip the downloaded file.
+3.  Open your Chromium browser and navigate to the extensions page (e.g., `chrome://extensions` or `edge://extensions`).
+4.  Enable "Developer mode" (usually a toggle in the top-right corner).
+5.  Click "Load unpacked".
+6.  Select the unzipped folder containing the `manifest.json` file.
+7.  The Port Authority extension should now be installed.
 
-## Permissions Needed
-**Display notifications to you**
-- This is needed so the addon can alert you when a malicious script is blocked or javascript port scanning is blocked.
+## Testing
 
-**Access browser tabs**
-- This is needed so the addon can display the correct number of blocked requests on a per-tab basis.
+*   **Port Scanning:** Visit the [TestPortScans.html](TestPortScans.html) file (open it locally in your browser) included in this repository. Check the browser's Developer Tools (F12) Network tab – requests to local IPs should appear as blocked by the extension.
+*   **ThreatMetrix:** Visit sites known to use ThreatMetrix (if you know specific examples). Check the Network tab and look for blocked requests to domains like `*.online-metrix.net` or known aliases defined in `rules.json`. The extension icon badge should increment, and you may receive a notification.
 
-**Access your data for all websites**
-- This is needed because the addon needs to check every request your browser makes to determine if it needs to be blocked.
+## Permissions Needed (Chromium)
 
-## Why I wrote this addon?
-Back in May of 2020 eBay got [caught port scanning their customers](https://nullsweep.com/why-is-this-website-port-scanning-me/). I noticed that all of the articles covering this topic mentioned that there was nothing you could do to prevent it... so I wanted to make one. After going down many rabbit holes, I found that this script which was port scanning everyone is, in my opinion, malware. 
+*   **Read your browsing history (`tabs`):** Needed to associate blocked requests with specific tabs and manage badge counts per tab.
+*   **Display notifications:** Required to alert you when potential port scans or tracking scripts are blocked.
+*   **Block content on any page you visit (`declarativeNetRequest`):** The core permission to implement blocking rules.
+*   **Access IP address and hostname information (`dns`):** Needed for the optional CNAME check to detect potential ThreatMetrix domains (requires Dev channel or newer).
+*   **Read and change your data on all websites (`host_permissions: <all_urls>`):** Required by `declarativeNetRequest` to apply rules to all sites and by the non-blocking `webRequest` listener to detect potential blocks across all sites.
+*   **Manage your apps, extensions, and themes (`management` - *Implicitly via storage*):** The `storage` permission allows storing settings like the allowlist and enabled status.
 
-**Here's why I think that:**
-- The data being exfiled from your computer is encrypted into an image with XOR.
-- The domain it reaches out to is made to look legitimate but redirects using a CNAME record to Lexis Nexis' servers.
-- It can determine your “real IP” address even if you use a VPN / Proxy [HERE](https://risk.lexisnexis.com/global/en/products/threatmetrix).
-- The javascript is assembled via string.join (like malware often does) and then executed in a service worker.
-- Each time you load the page, the javascript is re-obfuscated.
-- The script collects 416 pieces of personally identifiable information about you and your network. ( Shown [HERE](https://gist.github.com/ACK-J/aa8dceb072d31d97a4e7fe0ef389f370) )
-- They talk about trying to bypass adblockers by using encryption in their customer onboarding documentation [HERE](https://resource.payrix.com/resources/implementation-lexisnexis-threatmetrix-web)
+## Contributing
 
-So I developed multiple ways to stop this. The first being the existing functionality built into Port Authority. By default, Port Authority will check the sites that your browser reaches out to, and if it redirects to Lexis Nexis' infrastructure, it will be blocked, and you will receive a notification. The second is a Python script I wrote which uses Shodan to find all of Lexis Nexis' customer-specific domains on the internet [HERE](https://gist.github.com/ACK-J/7a2da401c732cbe58479d03acc4e4b43). You can add the script's output to a blocker such as uBlockOrigin to prevent your computer from connecting to them.
+Bug reports and feature requests specifically for this **Chromium MV3 port** are welcome via the [Issues](https://github.com/rastr1sr/Port-Authority-Chromium/issues) tab. Please use the provided templates.
 
-**Note:** This second method will never include every customer-specific endpoint, so you are better off using the dynamic blocking built into Port Authority which WILL block every customer-specific endpoint Lexis Nexis uses.
+## Acknowledgements
 
-## Reverse Engineering
-Most of these sites are using Lexis Nexis's Threat Metrix scripts, Dan Nemec has a great blog post reverse engineering the script and showing all the invasive data collected https://blog.nem.ec/2020/05/24/ebay-port-scanning/
-
-Zachary Hampton wrote some tools to reverse engineer the ThreatMetrix scripts. Go check it out https://github.com/ZacharyHampton/tmx-solver
-- Solver
-- Deobfuscator
-- Harvester
-- Payload Decryption Site
-- Network Comparator (compare solver to real implementation)
-
-# WARNING
-USING SOCKS5 PROXIES WITH THIS ADDON WILL CAUSE DNS LEAKS DUE TO HOW FIREFOX HANDLES CNAME LOOKUPS. FOR MORE INFORMATION SEE HERE https://github.com/ACK-J/Port_Authority/issues/7#issue-925519591
-- There is a simple fix for this. Type `about:config` in your browser, accept the warning, search for `network.trr.mode` and change it to `3`
-
-# ToDo:
-- Port to Chromium
-- ~~Add a whitelist~~
+*   This project is a port of the original [Port Authority](https://github.com/ACK-J/Port_Authority) by **ACK-J**. Many thanks for their excellent work on the original extension.

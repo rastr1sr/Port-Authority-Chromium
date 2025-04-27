@@ -1,30 +1,77 @@
 function toggleEnabled(ev){
-  browser.runtime.sendMessage({type: 'toggleEnabled', value: ev.target.checked});
+  chrome.runtime.sendMessage({type: 'toggleEnabled', value: ev.target.checked})
+    .then(response => {
+        if (!response?.success) console.error("Failed to toggle enabled state.");
+        // Optional: Add visual feedback on success/failure
+    })
+    .catch(error => {
+        console.error("Error sending toggleEnabled message:", error);
+         // Maybe revert checkbox state if message fails?
+         // ev.target.checked = !ev.target.checked;
+    });
 }
 
 function setNotificationsAllowed(ev){
-  browser.runtime.sendMessage({type: 'setNotificationsAllowed', value: ev.target.checked});
+  chrome.runtime.sendMessage({type: 'setNotificationsAllowed', value: ev.target.checked})
+     .then(response => {
+         if (!response?.success) console.error("Failed to set notifications allowed state.");
+     })
+     .catch(error => console.error("Error sending setNotificationsAllowed message:", error));
 }
 
 function settingsClicked(ev){
-  browser.runtime.openOptionsPage();
+  chrome.runtime.openOptionsPage();
 }
 
-browser.runtime.sendMessage({type: 'popupInit'}).then((response) => {
-  document.getElementById("globalStatusPortAuthority").checked = response.isListening;
+chrome.runtime.sendMessage({type: 'popupInit'})
+  .then((response) => {
+    if (!response) {
+        console.error("Error: No response received from background script for popupInit.");
+        document.getElementById("globalStatusPortAuthority").disabled = true;
+        document.getElementById("notificationStatusPortAuthority").disabled = true;
+        return;
+    }
 
-  // Add an event listener to the switch
-  document.getElementById('globalStatusPortAuthority').addEventListener("change", toggleEnabled);
+    if (typeof response.isListening === 'boolean') {
+        document.getElementById("globalStatusPortAuthority").checked = response.isListening;
+    } else {
+        console.warn("Missing or invalid 'isListening' in popupInit response.");
+        document.getElementById("globalStatusPortAuthority").disabled = true;
+    }
 
+    if (typeof response.notificationsAllowed === 'boolean') {
+         document.getElementById("notificationStatusPortAuthority").checked = response.notificationsAllowed;
+    } else {
+        console.warn("Missing or invalid 'notificationsAllowed' in popupInit response.");
+        document.getElementById("notificationStatusPortAuthority").disabled = true;
+    }
 
-  document.getElementById("notificationStatusPortAuthority").checked = response.notificationsAllowed;
+    document.getElementById('globalStatusPortAuthority').addEventListener("change", toggleEnabled);
+    document.getElementById('notificationStatusPortAuthority').addEventListener("change", setNotificationsAllowed);
 
-  // Add an event listener to the switch
-  document.getElementById('notificationStatusPortAuthority').addEventListener("change", setNotificationsAllowed);
+    const settingsIcon = document.getElementById('settings');
+    if (settingsIcon) {
+         settingsIcon.addEventListener("click", settingsClicked);
+    } else {
+        console.error("Could not find settings icon element.");
+    }
 
-  // Change to settings page
-  document.getElementById('settings').addEventListener("click", settingsClicked);
+    // Remove loading class after a short delay to allow rendering
+    // Ensure the class is on the html element as per the CSS
+    setTimeout(() => document.documentElement.classList.remove('loading'), 50); // Increased delay slightly
 
-  // Make sure this doesn't run too early
-  setTimeout(() => document.documentElement.classList.remove('loading'), 5);
-});
+  })
+  .catch(error => {
+      console.error("Error during popup initialization:", error);
+      // Display an error message to the user in the popup?
+      const container = document.querySelector('.popup-container');
+      if (container) {
+          const errorMsg = document.createElement('p');
+          errorMsg.textContent = "Error loading extension status. Please try again later.";
+          errorMsg.className = 'alert alert-danger'; // Use Bootstrap alert style
+          container.prepend(errorMsg); // Add message at the top
+      }
+       document.getElementById("globalStatusPortAuthority").disabled = true;
+       document.getElementById("notificationStatusPortAuthority").disabled = true;
+
+  });
