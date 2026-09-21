@@ -1,4 +1,3 @@
-# Name for the workflow
 name: "CodeQL Security Analysis"
 
 on:
@@ -15,17 +14,11 @@ jobs:
     name: Analyze Codebase
     runs-on: ubuntu-latest
 
-    # Permissions required by CodeQL to analyze and upload results
+    # CodeQL needs these to analyze and upload results.
     permissions:
-      actions: read       # To read workflow files
-      contents: read      # To check out the repository
-      security-events: write # To upload CodeQL analysis results
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'javascript' ]
-        # Supported languages: 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby', 'swift'
+      actions: read
+      contents: read
+      security-events: write
 
     steps:
     - name: Checkout repository
@@ -34,14 +27,8 @@ jobs:
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
-        languages: ${{ matrix.language }}
-        # Optionally specify custom queries here or in a config file
-        # queries: +security-extended,./.github/codeql/custom-queries
+        languages: javascript
 
-    # NOTE: Autobuild step is removed as it is not needed for JavaScript analysis
-
+    # JavaScript needs no build step.
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
-      with:
-         # Optional: Define category for SARIF upload status check
-         category: "/language:${{matrix.language}}"

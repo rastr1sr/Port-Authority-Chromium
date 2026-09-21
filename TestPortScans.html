@@ -4,63 +4,40 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>Port Authority Scan Test</title>
+    <title>Port Authority Test</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { -webkit-text-size-adjust: 100%; }
         :root {
-            --brand-accent: #800000;
-            --brand-accent-hover: #600000;
-            --brand-accent-bright: #B20000;
-
-            --light-bg: #f7f7f7;
-            --light-fg: #333333;
-            --light-fg-muted: #666666;
-            --light-border: #e0e0e0;
-            --light-card-bg: #ffffff;
-            --light-code-bg: #f0f0f0;
-
-            --dark-bg: #1e1e1e;
-            --dark-fg: #e0e0e0;
-            --dark-fg-muted: #aaaaaa;
-            --dark-border: #444444;
-            --dark-card-bg: #2a2a2a;
-            --dark-code-bg: #333333;
-
-            --sf-pro: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-            --mono: ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro', 'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
-
-            --bg: var(--light-bg);
-            --fg: var(--light-fg);
-            --fg-muted: var(--light-fg-muted);
-            --border: var(--light-border);
-            --card-bg: var(--light-card-bg);
-            --code-bg: var(--light-code-bg);
-            --accent: var(--brand-accent);
-            --accent-hover: var(--brand-accent-hover);
+            --accent: #800000;
+            --accent-hover: #600000;
+            --bg: #f7f7f7;
+            --fg: #333333;
+            --fg-muted: #666666;
+            --border: #e0e0e0;
+            --card-bg: #ffffff;
+            --code-bg: #f0f0f0;
         }
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg: var(--dark-bg);
-                --fg: var(--dark-fg);
-                --fg-muted: var(--dark-fg-muted);
-                --border: var(--dark-border);
-                --card-bg: var(--dark-card-bg);
-                --code-bg: var(--dark-code-bg);
-                --accent: var(--brand-accent-bright);
-                --accent-hover: var(--brand-accent);
+                --accent: #B20000;
+                --accent-hover: #800000;
+                --bg: #1e1e1e;
+                --fg: #e0e0e0;
+                --fg-muted: #aaaaaa;
+                --border: #444444;
+                --card-bg: #2a2a2a;
+                --code-bg: #333333;
             }
         }
         body {
             background-color: var(--bg);
             color: var(--fg);
-            font-family: var(--sf-pro);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
             line-height: 1.7;
             min-height: 100vh;
             padding: clamp(1.5rem, 5vw, 4rem);
             display: grid;
             place-items: center;
-            transition: background-color 0.3s, color 0.3s;
         }
         main {
             max-width: 70ch;
@@ -69,28 +46,43 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: clamp(1.5rem, 4vw, 3rem);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            transition: background-color 0.3s, border-color 0.3s;
-        }
-         @media (prefers-color-scheme: dark) {
-             main { box-shadow: 0 6px 15px rgba(0,0,0,0.2); }
         }
         h1 {
             font-size: clamp(1.5rem, 4vw, 2rem);
-            font-weight: 700;
             text-align: center;
             margin-bottom: 2rem;
             color: var(--accent);
         }
+        h2 {
+            font-size: 1.1rem;
+            margin: 2.5rem 0 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
         p {
             margin-bottom: 1.25rem;
             color: var(--fg-muted);
-            max-width: 65ch;
         }
-        p strong { color: var(--fg); font-weight: 600; }
+        p strong { color: var(--fg); }
+        a { color: var(--accent); }
+        code, pre {
+            font-family: ui-monospace, "Cascadia Mono", "Roboto Mono", monospace;
+            background-color: var(--code-bg);
+            border-radius: 4px;
+        }
+        code { padding: 0.2em 0.4em; font-size: 0.9em; color: var(--accent); }
+        pre {
+            border: 1px solid var(--border);
+            padding: 1em;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 0.8rem;
+            color: var(--fg-muted);
+        }
         #scan_button {
             display: block;
-            width: fit-content;
             margin: 2.5rem auto;
             padding: 0.8rem 2.2rem;
             font-size: 1rem;
@@ -100,79 +92,26 @@
             background-color: var(--accent);
             color: #ffffff;
             cursor: pointer;
-            transition: background-color 0.2s ease, transform 0.1s ease;
         }
-        #scan_button:hover:not([disabled]) {
-            background-color: var(--accent-hover);
-            transform: translateY(-2px);
-        }
-        #scan_button:active:not([disabled]) {
-            transform: translateY(0);
-        }
-        #scan_button:focus-visible {
-             outline: 2px solid var(--accent);
-             outline-offset: 2px;
-        }
-        #scan_button[disabled] {
-            cursor: wait;
-            opacity: 0.6;
-        }
-        h2 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-top: 2.5rem;
-            margin-bottom: 1rem;
-            color: var(--fg);
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 0.5rem;
-        }
-        code {
-            font-family: var(--mono);
-            background-color: var(--code-bg);
-            border-radius: 4px;
-            padding: 0.2em 0.4em;
-            font-size: 0.9em;
-            color: var(--accent);
-        }
-        pre {
-            font-family: var(--mono);
-            background-color: var(--code-bg);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1em;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            font-size: 0.8rem;
-            line-height: 1.6;
-            color: var(--fg-muted);
-            transition: background-color 0.3s, border-color 0.3s;
-        }
-        a {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-            border-bottom: 1px solid transparent;
-            transition: border-bottom-color 0.2s;
-        }
-        a:hover, a:focus {
-            border-bottom-color: currentColor;
-        }
+        #scan_button:hover:not([disabled]) { background-color: var(--accent-hover); }
+        #scan_button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        #scan_button[disabled] { cursor: wait; opacity: 0.6; }
         [hidden] { display: none !important; }
     </style>
 </head>
 <body>
     <main>
         <h1>Port Scan Test</h1>
+        <button id="scan_button">Run Scans</button>
+        <ol>
+            <li>Click the button</li>
+            <li>Open DevTools (F12) and look at the <a href="https://developer.chrome.com/docs/devtools/network/" target="_blank">Network</a> tab</li>
+            <li>Requests to local IPs should show as blocked, and the badge should count them</li>
+        </ol>
         <p>
-            Use this page to test the <strong>Port Authority (Chromium MV3 Version)</strong> extension. Clicking the button below attempts local network probes (using <code>HTTP</code>, <code>HTTPS</code>, <code>WS</code>, <code>WSS</code>) and requests to potential tracker domains.
+            Probes local addresses over <code>HTTP</code>, <code>HTTPS</code>, <code>WS</code> and <code>WSS</code>, plus known tracker domains. Nothing leaves your computer.
         </p>
-        <p>
-            With Port Authority enabled, these requests should be blocked. Check the <a href="https://developer.chrome.com/docs/devtools/network/" target="_blank">Network Tab</a> in DevTools for blocked requests and the extension icon for badge/popup updates. No data leaves your computer.
-        </p>
-        <button id="scan_button">Run Test Scans</button>
-        <h2 id="results-label" hidden>Requests Attempted:</h2>
+        <h2 id="results-label" hidden>Attempted:</h2>
         <pre id="results" hidden></pre>
         <div id="testdiv" hidden></div>
     </main>
@@ -182,73 +121,54 @@
         const results_container = document.getElementById("results");
         const test_div = document.getElementById("testdiv");
 
-        trigger_scan_button.addEventListener("click", run_combined_scan);
-        const log_scan_attempt = (url) => {
-            const sanitizedUrl = url.replace('<', '<').replace('>', '>');
-            results_container.append(sanitizedUrl + "\n");
-        };
+        // append() makes a text node; no escaping needed.
+        const log_scan_attempt = (url) => results_container.append(url + "\n");
 
-        var last_scanobj_index = 0;
-        var scanobjs = {};
-
-        function PortScanner(ip, port) {
-            if (isNaN(port) || port <= 0 || port > 65535) { console.error("Bad port:", port); return; }
-            const host = ip + ":" + port;
-            this.host = host;
-
-            const runScan = (protocol) => {
-                 const url = `${protocol}//${host}`;
-                 const img = document.createElement('img');
-                 img.src = url;
-                 img.alt = "";
-                 const currentIndex = last_scanobj_index++;
-                 scanobjs[currentIndex] = this;
-                 img.onerror = () => error_handler(currentIndex);
-                 test_div.appendChild(img);
-                 log_scan_attempt(url);
-                setTimeout(() => { if (scanobjs[currentIndex]) { delete scanobjs[currentIndex]; img.remove(); } }, 5000);
-            };
-            this.runHTTP = () => runScan("http:");
-            this.runHTTPS = () => runScan("https:");
-
-             const runWebSocketScan = (protocol) => {
-                 const url = `${protocol}//${host}/`;
-                 log_scan_attempt(url);
-                 try {
-                     const ws = new WebSocket(url);
-                     ws.onerror = () => { try { ws.close(); } catch(e) {} };
-                     ws.onclose = () => {};
-                      setTimeout(() => { try { if (ws.readyState < 2) ws.close(); } catch (e) {} }, 3000);
-                 } catch (e) {}
-             };
-            this.ws = () => runWebSocketScan("ws:");
-            this.wss = () => runWebSocketScan("wss:");
+        function imageProbe(url) {
+            log_scan_attempt(url);
+            const img = document.createElement("img");
+            img.src = url;
+            img.alt = "";
+            test_div.appendChild(img);
+            setTimeout(() => img.remove(), 5000);
         }
 
-        function error_handler(index) { if (scanobjs[index]) delete scanobjs[index]; }
+        function websocketProbe(url) {
+            log_scan_attempt(url);
+            try {
+                const ws = new WebSocket(url);
+                ws.onerror = () => { try { ws.close(); } catch (e) {} };
+                setTimeout(() => { try { if (ws.readyState < 2) ws.close(); } catch (e) {} }, 3000);
+            } catch (e) {}
+        }
+
+        function scan(host, port) {
+            if (isNaN(port) || port <= 0 || port > 65535) { console.error("bad port", port); return; }
+            const target = `${host}:${port}`;
+            imageProbe(`http://${target}`);
+            imageProbe(`https://${target}`);
+            websocketProbe(`ws://${target}/`);
+            websocketProbe(`wss://${target}/`);
+        }
 
         function run_combined_scan() {
-            const localTargets = [{"127.0.0.1":80},{"127.0.0.1":65535},{"0.0.0.0":80},{"localhost.":80},{"localhost.":8080},{"localhost":8080},{"localhost":8081},{"localhost":8082},{"localhost":8083},{"localhost":8084},{"localhost":8085},{"LoCALhOst":443},{"10.0.0.1":455},{"10.255.22.33":80},{"192.168.1.1":443},{"192.168.1.255":6463},{"172.17.100.155":4444},{"172.31.255.255":8081},{"172.031.33.33":445},{"169.254.1.0":547},{"169.254.1.0":21},{"169.254.1.0":194}];
-            const trackerTargets = ["fp.disney.go.com","h.chase.co.uk","analytics.vacations.united.com","tmx.bestbuy.com","thm12.visa.com","tmetrix.my.chick-fil-a.com","cfa.fidelity.com","content22.citibank.com","deviceauth.dmv.ca.gov","dfp.t-mobile.at","src.ebay-us.com","fp.disney.go.com","fp.ups.com"];
+            const localTargets = [["127.0.0.1",80],["127.0.0.1",65535],["0.0.0.0",80],["localhost.",80],["localhost.",8080],["localhost",8080],["localhost",8081],["localhost",8082],["localhost",8083],["localhost",8084],["localhost",8085],["LoCALhOst",443],["10.0.0.1",455],["10.255.22.33",80],["192.168.1.1",443],["192.168.1.255",6463],["172.17.100.155",4444],["172.31.255.255",8081],["172.031.33.33",445],["169.254.1.0",547],["169.254.1.0",21],["169.254.1.0",194]];
+            const trackerTargets = ["fp.disney.go.com","h.chase.co.uk","analytics.vacations.united.com","tmx.bestbuy.com","thm12.visa.com","tmetrix.my.chick-fil-a.com","cfa.fidelity.com","content22.citibank.com","deviceauth.dmv.ca.gov","dfp.t-mobile.at","src.ebay-us.com","fp.ups.com"];
 
-            trigger_scan_button.disabled = true; trigger_scan_button.blur();
-            results_label.hidden = false; results_container.hidden = false;
-            results_container.innerText = ""; test_div.innerHTML = "";
-            console.log("Starting scans...");
+            trigger_scan_button.disabled = true;
+            trigger_scan_button.blur();
+            results_label.hidden = false;
+            results_container.hidden = false;
+            results_container.innerText = "";
+            test_div.innerHTML = "";
 
-            localTargets.forEach(item => {
-                const [ip, port] = Object.entries(item)[0];
-                const scanner = new PortScanner(ip, port);
-                if (scanner) { scanner.runHTTP(); scanner.runHTTPS(); scanner.ws(); scanner.wss(); }
-            });
-            trackerTargets.forEach(host => {
-                const scanner = new PortScanner(host, 443);
-                if (scanner) { scanner.runHTTPS(); }
-            });
+            for (const [host, port] of localTargets) scan(host, port);
+            for (const host of trackerTargets) imageProbe(`https://${host}`);
 
-            console.log("Scan requests initiated.");
-            setTimeout(() => { trigger_scan_button.disabled = false; console.log("Scan button re-enabled."); }, 1000);
+            setTimeout(() => { trigger_scan_button.disabled = false; }, 1000);
         }
+
+        trigger_scan_button.addEventListener("click", run_combined_scan);
     </script>
 </body>
 </html>

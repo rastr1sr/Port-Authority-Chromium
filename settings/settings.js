@@ -1,164 +1,118 @@
 import { getItemFromLocal, modifyItemInLocal } from "../BrowserStorageManager.js";
 
-let remove_buttons_event_controller = null;
 const listContainerElement = document.getElementById("allowedDomainsListID");
 const addDomainForm = document.getElementById("addDomainForm");
 const addDomainInput = document.getElementById("add_domain_input");
 
-
-async function load_allowed_domains() {
-    if (remove_buttons_event_controller) {
-        remove_buttons_event_controller.abort();
-    }
-
-    remove_buttons_event_controller = new AbortController();
-    const signal = remove_buttons_event_controller.signal;
-
-    let allowedDomainsList = [];
+export async function load_allowed_domains() {
+    let allowedDomainsList;
     try {
         allowedDomainsList = await getItemFromLocal("allowed_domain_list", []);
-        if (!Array.isArray(allowedDomainsList)) {
-            console.warn("Stored allowlist is not an array, resetting.");
-            allowedDomainsList = [];
-            // Consider notifying the user or automatically fixing storage here
-        }
     } catch (error) {
-        console.error("Error loading allowed domains:", error);
-        listContainerElement.innerHTML = '<li>Error loading domain list.</li>'; // Display error
-        return;
-    }
-
-
-    if (!listContainerElement) {
-        console.error("Could not find list container element #allowedDomainsListID");
+        console.error("load allowlist:", error);
+        listContainerElement.replaceChildren(buildMessage("Could not load the list. Reopen this page."));
         return;
     }
 
     if (allowedDomainsList.length === 0) {
-        listContainerElement.innerHTML = '<li>No domains currently allowlisted.</li>';
+        listContainerElement.replaceChildren(buildMessage("No domains allowlisted."));
         return;
     }
 
-    const domainListDomElements = allowedDomainsList.map((domain) => {
-        const listItem = document.createElement("li");
+    listContainerElement.replaceChildren(...allowedDomainsList.map(buildDomainRow));
+}
 
-        const domainSpan = document.createElement("span");
-        domainSpan.textContent = domain;
-        listItem.appendChild(domainSpan);
+function buildMessage(text) {
+    const listItem = document.createElement("li");
+    listItem.textContent = text;
+    return listItem;
+}
 
-        const button = document.createElement("button");
-        button.textContent = "Remove";
-        button.setAttribute('aria-label', `Remove ${domain} from allowlist`); // Accessibility
+function buildDomainRow(domain) {
+    const listItem = document.createElement("li");
 
-        button.addEventListener("click", async () => {
-            try {
-                button.disabled = true;
-                button.textContent = "Removing...";
+    const domainSpan = document.createElement("span");
+    domainSpan.textContent = domain;
+    listItem.appendChild(domainSpan);
 
-                await modifyItemInLocal("allowed_domain_list", [],
-                    (list) => list.filter((d) => d !== domain)
-                );
+    const button = document.createElement("button");
+    button.textContent = "Remove";
+    button.setAttribute("aria-label", `Remove ${domain} from allowlist`);
 
-                await load_allowed_domains(); // Await the reload
-
-            } catch (error) {
-                console.error(`Error removing domain ${domain}:`, error);
-                // Re-enable button on error maybe? Or show an error message?
-                button.disabled = false;
-                button.textContent = "Remove";
-                alert(`Failed to remove domain ${domain}. Please try again.`);
-            }
-        }, { signal }); // Pass the signal to the listener options
-
-        listItem.appendChild(button);
-
-        return listItem;
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "Removing...";
+        try {
+            await modifyItemInLocal("allowed_domain_list", [], (list) => list.filter((d) => d !== domain));
+            await load_allowed_domains();
+        } catch (error) {
+            console.error(`remove ${domain}:`, error);
+            button.disabled = false;
+            button.textContent = "Remove";
+            alert(`Could not remove ${domain}. Try again.`);
+        }
     });
 
-    listContainerElement.replaceChildren(...domainListDomElements);
+    listItem.appendChild(button);
+    return listItem;
 }
 
 function extractURLHost(text) {
     let urlInput = String(text).trim();
 
     if (!urlInput) {
-        throw new Error("Input is empty.");
+        throw new Error("Empty input.");
     }
 
-    // Basic check if it looks like a domain/IP before prepending protocol
-    if (!urlInput.includes('.') && !urlInput.includes(':') && urlInput !== 'localhost') {
-         throw new Error(`Invalid domain format: "${urlInput}". Should contain '.' or be 'localhost'.`);
+    if (!urlInput.includes(".") && !urlInput.includes(":") && urlInput !== "localhost") {
+        throw new Error(`Invalid domain: "${urlInput}". Use the bare domain, e.g. example.com`);
     }
 
-
-    // Try prepending https:// if no protocol exists
-    if (!urlInput.startsWith('http://') && !urlInput.startsWith('https://')) {
-        if (!urlInput.startsWith('//')) {
-             urlInput = "https://" + urlInput;
-        } else {
-            // Handle protocol-relative URL
-             urlInput = "https:" + urlInput;
-        }
+    if (!urlInput.startsWith("http://") && !urlInput.startsWith("https://")) {
+        urlInput = "https://" + urlInput;
     }
 
     try {
-        const newUrl = new URL(urlInput);
-        if (!newUrl.hostname) {
-             throw new Error("Could not extract a valid hostname.");
-        }
-        return newUrl.hostname; // Strips port, converts to lowercase
+        const { hostname } = new URL(urlInput);
+        if (!hostname) throw new Error("No hostname.");
+        return hostname;
     } catch (e) {
-        console.error("URL parsing error:", e);
-        throw new Error(`Invalid URL or domain: "${text}"`);
+        console.error("parse:", e);
+        throw new Error(`Invalid domain: "${text}". Use the bare domain, e.g. example.com`);
     }
 }
 
 async function saveOptions(e) {
-    e.preventDefault(); // Prevent default form submission
+    e.preventDefault();
 
-    const domainToAddInput = addDomainInput.value;
     let normalizedHost;
-
     try {
-        normalizedHost = extractURLHost(domainToAddInput);
-    } catch(error) {
-        console.error("Validation Error:", error);
-        alert(error.message || "Please enter a valid domain name (e.g., example.com).");
+        normalizedHost = extractURLHost(addDomainInput.value);
+    } catch (error) {
+        alert(error.message || "Enter a domain, e.g. example.com");
         return;
     }
 
+    let alreadyPresent = false;
     try {
-        const result = await modifyItemInLocal("allowed_domain_list", [],
-            (list) => {
-                const currentList = Array.isArray(list) ? list : [];
-                if (!currentList.includes(normalizedHost)) {
-                    return [...currentList, normalizedHost].sort(); // Keep the list sorted
-                } else {
-                    return null; // Signal no modification needed
-                }
-            });
+        // Returning null on a dupe would wipe the list.
+        await modifyItemInLocal("allowed_domain_list", [], (list) => {
+            alreadyPresent = list.includes(normalizedHost);
+            return alreadyPresent ? list : [...list, normalizedHost].sort();
+        });
 
-        if (result === null) {
-             alert(`Domain "${normalizedHost}" is already in the allowlist.`);
-        } else {
-             console.log(`Domain "${normalizedHost}" added to allowlist.`);
-             addDomainInput.value = ""; // Clear the input field
-             await load_allowed_domains(); // Refresh the list display
+        if (alreadyPresent) {
+            alert(`"${normalizedHost}" is already allowlisted.`);
+            return;
         }
 
-    } catch(storageError) {
-        console.error("Error saving domain to storage:", storageError);
-        alert("Failed to save domain to allowlist. Please try again.");
+        addDomainInput.value = "";
+        await load_allowed_domains();
+    } catch (storageError) {
+        console.error("save:", storageError);
+        alert("Could not save. Try again.");
     }
 }
 
-
-// --- Initial Setup ---
-
-if (!listContainerElement || !addDomainForm || !addDomainInput) {
-     console.error("Essential settings page elements not found. Script initialization failed.");
-     document.body.innerHTML = "<h1>Error</h1><p>Could not initialize settings page. Required elements are missing.</p>";
-} else {
-    load_allowed_domains();
-    addDomainForm.addEventListener("submit", saveOptions);
-}
+load_allowed_domains();
+addDomainForm.addEventListener("submit", saveOptions);

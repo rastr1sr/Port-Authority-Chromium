@@ -18,79 +18,148 @@
 
 body {
     font-size: 14px;
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.popup-container {
     width: 275px;
-    overflow-y:  auto;
     overflow-x: hidden;
+    padding-bottom: 10px;
 }
 
-
-.small-version {
-    font-size: 10px;
-}
-
-.banner-color {
-    background-color:#800000;
-}
-
-.brand-text-color {
-    color:#800000;
-}
-
-.bold-text{
-    font-weight: bold;
+.banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+    margin-bottom: 10px;
+    background-color: #800000;
 }
 
 .brand {
     font-size: 17px;
+    font-weight: bold;
+    color: #ffffff;
 }
 
-.navbar-margin {
-    margin-top: 0;
-    margin-bottom: 10px;
+.bold {
+    font-weight: bold;
 }
 
-.btn-default {
-    color:#333;
-    background-color:#fff;
-    border-color:#ccc
-}
-.btn-default.focus,
-.btn-default:focus {
-    color:#333;
-    background-color:#e6e6e6;
-    border-color:#8c8c8c
-}
-.btn-default:hover {
-    color:#333;
-    background-color:#e6e6e6;
-    border-color:#adadad
+.brand-text-color {
+    color: #800000;
 }
 
-.bold{
-  font-weight:bold;
+.section {
+    padding: 0 12px;
+    margin-bottom: 12px;
 }
 
-.popup-container {
-    min-width: 200px;
-}
-
-.navbar-brand-text {
-    color: #FFFFFF;
-}
-
-#settings img {
-    float: right;
-}
-
-.switch-label {
-    font-size: 16px;
+.section h5 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 8px;
+    font-size: 15px;
 }
 
 .settings-icon {
-    float: right;
+    cursor: pointer;
 }
 
-.warning-text {
-    color: red;
+/* Status messages are appended straight to the container, which has no padding. */
+#blocked_data_display > p {
+    margin: 4px 0;
+    padding: 0 12px;
 }
 
+.host-list {
+    list-style: none;
+    margin: 0;
+    padding-left: 12px;
+}
+
+.port {
+    padding-left: 12px;
+    font-size: 12px;
+}
+
+summary {
+    cursor: pointer;
+}
+
+.muted {
+    color: #6c757d;
+}
+
+.error {
+    color: #842029;
+}
+
+.switch {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+/* Sized to nothing so it stays focusable without taking part in the layout. */
+.switch input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+}
+
+.slider {
+    position: relative;
+    flex: 0 0 50px;
+    height: 24px;
+    background-color: #5e5c5c;
+    transition: .4s;
+}
+
+.slider::before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    top: 4px;
+    background-color: #ffffff;
+    transition: .4s;
+}
+
+:root.loading .slider, :root.loading .slider::before {
+    transition: none;
+}
+
+input:checked + .slider {
+    background-color: #800000;
+}
+
+input:focus-visible + .slider {
+    outline: 2px solid #800000;
+    outline-offset: 2px;
+}
+
+input:checked + .slider::before {
+    transform: translateX(26px);
+}
+
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round::before {
+    border-radius: 50%;
+}
+
+.switch-label {
+    font-size: 15px;
+}

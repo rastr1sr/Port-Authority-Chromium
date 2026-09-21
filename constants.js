@@ -1,16 +1,22 @@
-const PROTOCOLS_AND_PORTS = {
-    "ftp:": 20,
-    "ftps:": 21,
-    "sftp:": 22,
-    "ssh:": 22,
-    "tftp:": 69, // nice
-    "http:": 80,
-    "ws:": 80,
-    "https:": 443,
-    "wss:": 443 // Corrected WSS port
-}
+// Sync with rules.json by hand.
+export const RESOURCE_TYPES = [
+    "main_frame", "sub_frame", "xmlhttprequest", "websocket", "image", "script", "other"
+];
 
-export const getPortForProtocol = (protocol) => {
-    const lowercase_protocol_string = `${protocol}`.toLowerCase();
-    return PROTOCOLS_AND_PORTS[lowercase_protocol_string];
+const PRIVATE_HOSTNAMES = new Set(["localhost", "0.0.0.0", "::1", "[::1]"]);
+
+export function isPrivateHost(hostname) {
+    const host = String(hostname).toLowerCase().replace(/\.$/, "");
+    if (PRIVATE_HOSTNAMES.has(host)) return true;
+
+    const octets = host.split(".");
+    if (octets.length !== 4) return false;
+    if (!octets.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255)) return false;
+
+    const [a, b] = octets.map(Number);
+    return a === 127
+        || a === 10
+        || (a === 172 && b >= 16 && b <= 31)
+        || (a === 192 && b === 168)
+        || (a === 169 && b === 254);
 }

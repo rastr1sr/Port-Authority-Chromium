@@ -1,0 +1,12 @@
+# .pem is a private signing key. Never commit it.
+*.crx
+*.pem
+*.zip
+
+node_modules/
+
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
